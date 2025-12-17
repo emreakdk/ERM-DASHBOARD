@@ -60,6 +60,34 @@ const invoiceStatusBadgeClasses: Record<string, string> = {
   cancelled: 'border-transparent bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-400 dark:border-red-500/20',
 }
 
+const paymentStatusVariants: Record<string, 'secondary' | 'default' | 'destructive'> = {
+  pending: 'secondary',
+  partial: 'default',
+  paid: 'default',
+}
+
+const paymentStatusBadgeClasses: Record<string, string> = {
+  pending: 'border-transparent bg-slate-100 text-slate-800 dark:bg-slate-500/20 dark:text-slate-300 dark:border-slate-500/20',
+  partial: 'border-transparent bg-blue-100 text-blue-800 dark:bg-blue-500/15 dark:text-blue-400 dark:border-blue-500/20',
+  paid: invoiceStatusBadgeClasses.paid,
+}
+
+function getInvoicePaymentStatus(inv: any) {
+  const baseStatus = String(inv?.status ?? '')
+  if (baseStatus === 'cancelled') return { key: 'cancelled', label: INVOICE_STATUS_LABELS.cancelled }
+  if (baseStatus === 'draft') return { key: 'draft', label: INVOICE_STATUS_LABELS.draft }
+  if (baseStatus === 'paid') return { key: 'paid', label: 'Ödendi' }
+
+  const total = Number(inv?.total_amount ?? 0)
+  const paidAmount = Array.isArray(inv?.payments)
+    ? (inv.payments as any[]).reduce((acc, p) => acc + Number(p?.amount ?? 0), 0)
+    : 0
+
+  if (paidAmount <= 0) return { key: 'pending', label: 'Bekliyor' }
+  if (paidAmount < total) return { key: 'partial', label: 'Kısmi Ödeme' }
+  return { key: 'paid', label: 'Ödendi' }
+}
+
 const dealStageLabels: Record<string, string> = {
   new: 'Yeni',
   meeting: 'Toplantı',
@@ -290,7 +318,11 @@ export function CustomerDetail() {
       .filter((inv: any) => inv.status !== 'cancelled')
       .reduce((acc, inv: any) => acc + Number(inv.total_amount ?? 0), 0)
     const openInvoiceTotal = invoices
-      .filter((inv: any) => inv.status !== 'paid' && inv.status !== 'cancelled')
+      .filter((inv: any) => {
+        if (inv.status === 'cancelled') return false
+        const computed = getInvoicePaymentStatus(inv)
+        return computed.key !== 'paid'
+      })
       .reduce((acc, inv: any) => acc + Number(inv.total_amount ?? 0), 0)
     const activeDeals = deals.filter((d: any) => d.stage !== 'won' && d.stage !== 'lost').length
 
@@ -318,6 +350,19 @@ export function CustomerDetail() {
             <ArrowLeft className="h-4 w-4" />
             Geri
           </Button>
+
+          {customerId ? (
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => {
+                navigate(`/customers/${customerId}/statement`)
+              }}
+            >
+              <FileText className="h-4 w-4" />
+              Ekstre Görüntüle
+            </Button>
+          ) : null}
         </div>
 
         <div className="rounded-xl border bg-white dark:bg-background p-6 shadow-sm">
@@ -475,9 +520,19 @@ export function CustomerDetail() {
                                 ? String(first)
                                 : `${String(first)} (+${items.length - 1} kalem)`
 
-                          const variant = invoiceStatusVariants[String(inv.status)] ?? 'secondary'
+                          const displayStatus = getInvoicePaymentStatus(inv)
+                          const variant =
+                            displayStatus.key === 'draft' || displayStatus.key === 'cancelled'
+                              ? invoiceStatusVariants[String(inv.status)] ?? 'secondary'
+                              : paymentStatusVariants[displayStatus.key] ?? 'secondary'
+                          const badgeClassName =
+                            displayStatus.key === 'draft' || displayStatus.key === 'cancelled'
+                              ? invoiceStatusBadgeClasses[String(inv.status)]
+                              : paymentStatusBadgeClasses[displayStatus.key] ?? ''
                           const statusLabel =
-                            (INVOICE_STATUS_LABELS as any)?.[String(inv.status)] ?? String(inv.status)
+                            displayStatus.key === 'draft' || displayStatus.key === 'cancelled'
+                              ? (INVOICE_STATUS_LABELS as any)?.[String(inv.status)] ?? String(inv.status)
+                              : displayStatus.label
 
                           return (
                             <tr key={inv.id} className="border-b">
@@ -489,7 +544,7 @@ export function CustomerDetail() {
                                 </div>
                               </td>
                               <td className="p-4">
-                                <Badge variant={variant} className={invoiceStatusBadgeClasses[String(inv.status)]}>
+                                <Badge variant={variant} className={badgeClassName}>
                                   {statusLabel}
                                 </Badge>
                               </td>

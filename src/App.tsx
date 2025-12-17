@@ -10,6 +10,7 @@ import { InvoicesPage } from './pages/InvoicesPage'
 import { InvoicesNewPage } from './pages/InvoicesNewPage'
 import { CustomersPage } from './pages/CustomersPage'
 import { CustomerDetail } from './pages/CustomerDetail'
+import { Statement } from './pages/Statement'
 import { AccountsPage } from './pages/AccountsPage'
 import { ProductsPage } from './pages/ProductsPage'
 import { DealsPage } from './pages/DealsPage'
@@ -19,6 +20,7 @@ import { Activities } from './pages/Activities'
 import { ForgotPassword } from './pages/ForgotPassword'
 import { UpdatePassword } from './pages/UpdatePassword'
 import { PublicQuote } from './pages/public/PublicQuote'
+import { PublicInvoice } from './pages/public/PublicInvoice'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,6 +42,7 @@ function App() {
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/update-password" element={<UpdatePassword />} />
             <Route path="/p/quote/:token" element={<PublicQuote />} />
+            <Route path="/p/invoice/:token" element={<PublicInvoice />} />
             <Route
               path="/"
               element={
@@ -117,6 +120,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <CustomerDetail />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/customers/:id/statement"
+              element={
+                <ProtectedRoute>
+                  <Statement />
                 </ProtectedRoute>
               }
             />

@@ -15,6 +15,7 @@ type DealRow = Tables['deals']['Row']
 type ActivityLogRow = Tables['activity_logs']['Row']
 type InvoiceRow = Tables['invoices']['Row']
 type InvoiceItemRow = Tables['invoice_items']['Row']
+type PaymentRow = Tables['payments']['Row']
 type ActivityRow = Tables['activities']['Row']
 type NoteRow = Tables['notes']['Row']
 type AttachmentRow = Tables['attachments']['Row']
@@ -1367,7 +1368,7 @@ export function useCustomerInvoices(customerId?: string | null) {
     queryFn: async () => {
       const { data, error } = (await supabase
         .from('invoices')
-        .select('*, invoice_items(*)')
+        .select('*, invoice_items(*), payments(amount)')
         .eq('customer_id', customerId as string)
         .order('invoice_date', { ascending: false })) as any
 
@@ -1497,7 +1498,7 @@ export function useInvoicesByDateRange(params?: { from?: string; to?: string }) 
     queryFn: async () => {
       let q = supabase
         .from('invoices')
-        .select('*, customer:customers(*), invoice_items(*)')
+        .select('*, customer:customers(*), invoice_items(*), payments(amount)')
         .order('invoice_date', { ascending: false })
 
       if (params?.from) {
@@ -1517,6 +1518,62 @@ export function useInvoicesByDateRange(params?: { from?: string; to?: string }) 
           invoice_items?: InvoiceItemRow[] | null
         }
       >
+    },
+  })
+}
+
+export function useInvoicePayments(invoiceId?: string | null) {
+  return useQuery<PaymentRow[]>({
+    queryKey: ['payments', invoiceId],
+    enabled: Boolean(invoiceId),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('payments')
+        .select('*')
+        .eq('invoice_id', invoiceId as string)
+        .order('payment_date', { ascending: false })
+
+      if (error) throw error
+      return (data ?? []) as PaymentRow[]
+    },
+  })
+}
+
+export function useCreatePayment() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (payload: Tables['payments']['Insert']) => {
+      const { data, error } = await supabase
+        .from('payments')
+        .insert(payload)
+        .select()
+        .single()
+
+      if (error) throw error
+      return data
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['payments', (variables as any)?.invoice_id] })
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      queryClient.invalidateQueries({ queryKey: ['customer_invoices'] })
+    },
+  })
+}
+
+export function useDeletePayment() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (payload: { id: string; invoice_id: string }) => {
+      const { error } = await supabase.from('payments').delete().eq('id', payload.id)
+      if (error) throw error
+      return payload
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['payments', variables.invoice_id] })
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      queryClient.invalidateQueries({ queryKey: ['customer_invoices'] })
     },
   })
 }

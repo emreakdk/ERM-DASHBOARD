@@ -495,6 +495,7 @@ export interface Database {
           subtotal: number
           tax_amount: number
           total_amount: number
+          token: string | null
           notes: string | null
           created_at: string
           updated_at: string
@@ -510,6 +511,7 @@ export interface Database {
           subtotal: number
           tax_amount: number
           total_amount: number
+          token?: string | null
           notes?: string | null
           created_at?: string
           updated_at?: string
@@ -525,9 +527,43 @@ export interface Database {
           subtotal?: number
           tax_amount?: number
           total_amount?: number
+          token?: string | null
           notes?: string | null
           created_at?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      payments: {
+        Row: {
+          id: string
+          user_id: string
+          invoice_id: string
+          amount: number
+          payment_date: string
+          payment_method: string | null
+          notes: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id?: string
+          invoice_id: string
+          amount: number
+          payment_date: string
+          payment_method?: string | null
+          notes?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          invoice_id?: string
+          amount?: number
+          payment_date?: string
+          payment_method?: string | null
+          notes?: string | null
+          created_at?: string
         }
         Relationships: []
       }
@@ -569,6 +605,12 @@ export interface Database {
       [_ in never]: never
     }
     Functions: {
+      public_invoice_get: {
+        Args: {
+          p_token: string
+        }
+        Returns: Json
+      }
       public_quote_get: {
         Args: {
           p_token: string
