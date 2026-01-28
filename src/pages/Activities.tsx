@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AppLayout } from '../components/layout/AppLayout'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
@@ -15,6 +16,7 @@ import {
   useDeleteActivity,
   useToggleActivityCompleted,
 } from '../hooks/useSupabaseQuery'
+import { usePermissions } from '../contexts/PermissionsContext'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -40,19 +42,19 @@ import {
   subMonths,
   addMonths,
 } from 'date-fns'
-import { tr } from 'date-fns/locale'
+import { enUS, tr } from 'date-fns/locale'
 import { Calendar, List, Pencil, Plus, Trash2 } from 'lucide-react'
 
 type ActivityType = 'task' | 'meeting' | 'call' | 'email'
 
 type ViewMode = 'list' | 'calendar'
 
-const typeLabels: Record<ActivityType, string> = {
-  task: 'Görev',
-  meeting: 'Toplantı',
-  call: 'Arama',
-  email: 'E-posta',
-}
+const getTypeLabels = (t: (key: string) => string): Record<ActivityType, string> => ({
+  task: t('activities.task'),
+  meeting: t('activities.meeting'),
+  call: t('activities.call'),
+  email: t('activities.email'),
+})
 
 const typeBadge: Record<ActivityType, { variant: 'secondary' | 'default' | 'destructive' | 'outline'; className?: string }> = {
   task: {
@@ -83,16 +85,21 @@ function parseDueDate(due?: string | null) {
 }
 
 export function Activities() {
+  const { t, i18n } = useTranslation()
   const [openAdd, setOpenAdd] = useState(false)
   const [openEdit, setOpenEdit] = useState(false)
   const [editingActivityId, setEditingActivityId] = useState<string | null>(null)
   const [view, setView] = useState<ViewMode>('list')
+
+  const typeLabels = getTypeLabels(t)
 
   const activitiesQuery = useActivities()
   const customersQuery = useCustomers()
   const dealsQuery = useDeals()
   const toggleCompleted = useToggleActivityCompleted()
   const deleteActivity = useDeleteActivity()
+  const { canEditModule } = usePermissions()
+  const canEditActivities = canEditModule('activities')
 
   const activities = activitiesQuery.data ?? []
   const customers = customersQuery.data ?? []
@@ -127,7 +134,9 @@ export function Activities() {
   const [monthCursor, setMonthCursor] = useState<Date>(() => startOfMonth(new Date()))
   const [selectedDay, setSelectedDay] = useState<Date>(() => new Date())
 
-  const monthLabel = useMemo(() => format(monthCursor, 'LLLL yyyy', { locale: tr }), [monthCursor])
+  const dateLocale = useMemo(() => (i18n.language?.startsWith('en') ? enUS : tr), [i18n.language])
+
+  const monthLabel = useMemo(() => format(monthCursor, 'LLLL yyyy', { locale: dateLocale }), [monthCursor, dateLocale])
 
   const calendarDays = useMemo(() => {
     const start = startOfWeek(startOfMonth(monthCursor), { weekStartsOn: 1 })
@@ -169,46 +178,51 @@ export function Activities() {
   const formatDateTime = (due?: string | null) => {
     const d = parseDueDate(due)
     if (!d) return '-'
-    return `${format(d, 'd MMM yyyy', { locale: tr })} - ${format(d, 'HH:mm', { locale: tr })}`
+    return `${format(d, 'd MMM yyyy', { locale: dateLocale })} - ${format(d, 'HH:mm', { locale: dateLocale })}`
   }
+
+  const weekdayLabels = useMemo(() => {
+    const start = startOfWeek(new Date(), { weekStartsOn: 1 })
+    return Array.from({ length: 7 }, (_, idx) => format(addDays(start, idx), 'EEE', { locale: dateLocale }))
+  }, [dateLocale])
 
   const handleToggle = async (id: string, next: boolean) => {
     try {
       await toggleCompleted.mutateAsync({ id, is_completed: next })
     } catch (e: any) {
-      toast({ title: 'Güncellenemedi', description: e?.message, variant: 'destructive' })
+      toast({ title: t('common.updateFailed'), description: e?.message, variant: 'destructive' })
     }
   }
 
   const handleDelete = async (id: string) => {
     try {
       await deleteActivity.mutateAsync({ id })
-      toast({ title: 'Aktivite silindi' })
+      toast({ title: t('activities.activityDeleted') })
     } catch (e: any) {
-      toast({ title: 'Silinemedi', description: e?.message, variant: 'destructive' })
+      toast({ title: t('common.deleteFailed'), description: e?.message, variant: 'destructive' })
     }
   }
 
   return (
-    <AppLayout title="Aktiviteler">
+    <AppLayout title={t('nav.activities')}>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <Tabs value={view} onValueChange={(v) => setView(v as ViewMode)}>
             <TabsList>
               <TabsTrigger value="list" className="gap-2">
                 <List className="h-4 w-4" />
-                Liste
+                {t('activities.list')}
               </TabsTrigger>
               <TabsTrigger value="calendar" className="gap-2">
                 <Calendar className="h-4 w-4" />
-                Takvim
+                {t('activities.calendar')}
               </TabsTrigger>
             </TabsList>
           </Tabs>
 
-          <Button onClick={() => setOpenAdd(true)} className="gap-2">
+          <Button onClick={() => setOpenAdd(true)} className="gap-2" disabled={!canEditActivities}>
             <Plus className="h-4 w-4" />
-            Yeni Aktivite
+            {t('activities.newActivity')}
           </Button>
         </div>
 
@@ -218,7 +232,7 @@ export function Activities() {
         {view === 'list' ? (
           <Card>
             <CardHeader>
-              <CardTitle>Yaklaşan Aktiviteler</CardTitle>
+              <CardTitle>{t('activities.upcomingActivities')}</CardTitle>
             </CardHeader>
             <CardContent>
               {isLoading ? (
@@ -228,18 +242,18 @@ export function Activities() {
                   <Skeleton className="h-10 w-full" />
                 </div>
               ) : upcoming.length === 0 ? (
-                <div className="text-sm text-muted-foreground">Aktivite yok.</div>
+                <div className="text-sm text-muted-foreground">{t('activities.noActivities')}</div>
               ) : (
                 <div className="rounded-md border">
                   <table className="w-full">
                     <thead>
                       <tr className="border-b bg-muted/50">
-                        <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Tamam</th>
-                        <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Konu</th>
-                        <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Tür</th>
-                        <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">İlgili</th>
-                        <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Tarih</th>
-                        <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">İşlemler</th>
+                        <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">{t('activities.done')}</th>
+                        <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">{t('activities.subject')}</th>
+                        <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">{t('activities.type')}</th>
+                        <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">{t('activities.related')}</th>
+                        <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">{t('common.date')}</th>
+                        <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">{t('table.actions')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -255,6 +269,7 @@ export function Activities() {
                               <Checkbox
                                 checked={Boolean(a.is_completed)}
                                 onCheckedChange={(v: boolean | 'indeterminate') => void handleToggle(a.id, Boolean(v))}
+                                disabled={!canEditActivities}
                               />
                             </td>
                             <td className={cn('p-4 font-medium', a.is_completed && 'line-through text-muted-foreground')}>
@@ -279,13 +294,14 @@ export function Activities() {
                                     setEditingActivityId(a.id)
                                     setOpenEdit(true)
                                   }}
+                                  disabled={!canEditActivities}
                                 >
                                   <Pencil className="h-4 w-4" />
                                 </Button>
 
                                 <AlertDialog>
                                   <AlertDialogTrigger asChild>
-                                    <Button type="button" variant="outline" size="icon">
+                                    <Button type="button" variant="outline" size="icon" disabled={!canEditActivities}>
                                       <Trash2 className="h-4 w-4" />
                                     </Button>
                                   </AlertDialogTrigger>
@@ -322,13 +338,13 @@ export function Activities() {
                 <span>{monthLabel}</span>
                 <div className="flex items-center gap-2">
                   <Button variant="outline" size="sm" onClick={() => setMonthCursor((d) => subMonths(d, 1))}>
-                    Önceki
+                    {t('common.previous')}
                   </Button>
                   <Button variant="outline" size="sm" onClick={() => setMonthCursor(startOfMonth(new Date()))}>
-                    Bugün
+                    {t('common.today')}
                   </Button>
                   <Button variant="outline" size="sm" onClick={() => setMonthCursor((d) => addMonths(d, 1))}>
-                    Sonraki
+                    {t('common.next')}
                   </Button>
                 </div>
               </CardTitle>
@@ -341,7 +357,7 @@ export function Activities() {
               ) : (
                 <div className="space-y-6">
                   <div className="grid grid-cols-7 gap-2">
-                    {['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'].map((d) => (
+                    {weekdayLabels.map((d) => (
                       <div key={d} className="text-xs font-medium text-muted-foreground px-1">
                         {d}
                       </div>
@@ -368,7 +384,7 @@ export function Activities() {
                           )}
                         >
                           <div className="flex items-center justify-between">
-                            <div className="text-sm font-medium">{format(day, 'd', { locale: tr })}</div>
+                            <div className="text-sm font-medium">{format(day, 'd', { locale: dateLocale })}</div>
                             {dayActivities.length > 0 ? (
                               <div className="text-xs text-muted-foreground">{dayActivities.length}</div>
                             ) : null}
@@ -387,25 +403,25 @@ export function Activities() {
 
                   <div>
                     <div className="mb-3 flex items-center justify-between">
-                      <div className="text-sm font-semibold">{format(selectedDay, 'd MMMM yyyy', { locale: tr })}</div>
-                      <Button variant="outline" size="sm" onClick={() => setOpenAdd(true)}>
-                        Yeni Aktivite
+                      <div className="text-sm font-semibold">{format(selectedDay, 'd MMMM yyyy', { locale: dateLocale })}</div>
+                      <Button variant="outline" size="sm" onClick={() => setOpenAdd(true)} disabled={!canEditActivities}>
+                        {t('activities.newActivity')}
                       </Button>
                     </div>
 
                     {selectedDayActivities.length === 0 ? (
-                      <div className="text-sm text-muted-foreground">Bu gün için aktivite yok.</div>
+                      <div className="text-sm text-muted-foreground">{t('activities.noActivitiesForDay')}</div>
                     ) : (
                       <div className="rounded-md border">
                         <table className="w-full">
                           <thead>
                             <tr className="border-b bg-muted/50">
-                              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Tamam</th>
-                              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Konu</th>
-                              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Tür</th>
-                              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">İlgili</th>
-                              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Saat</th>
-                              <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">İşlemler</th>
+                              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">{t('activities.done')}</th>
+                              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">{t('activities.subject')}</th>
+                              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">{t('activities.type')}</th>
+                              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">{t('activities.related')}</th>
+                              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">{t('common.time')}</th>
+                              <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">{t('table.actions')}</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -422,6 +438,7 @@ export function Activities() {
                                     <Checkbox
                                       checked={Boolean(a.is_completed)}
                                       onCheckedChange={(v: boolean | 'indeterminate') => void handleToggle(a.id, Boolean(v))}
+                                      disabled={!canEditActivities}
                                     />
                                   </td>
                                   <td className={cn('p-4 font-medium', a.is_completed && 'line-through text-muted-foreground')}>
@@ -434,7 +451,7 @@ export function Activities() {
                                   </td>
                                   <td className="p-4 text-sm text-muted-foreground">{relatedText}</td>
                                   <td className="p-4 text-sm text-muted-foreground">
-                                    {due ? format(due, 'HH:mm', { locale: tr }) : '-'}
+                                    {due ? format(due, 'HH:mm', { locale: dateLocale }) : '-'}
                                   </td>
                                   <td className="p-4 text-right">
                                     <div className="flex items-center justify-end gap-2">
@@ -446,13 +463,14 @@ export function Activities() {
                                           setEditingActivityId(a.id)
                                           setOpenEdit(true)
                                         }}
+                                        disabled={!canEditActivities}
                                       >
                                         <Pencil className="h-4 w-4" />
                                       </Button>
 
                                       <AlertDialog>
                                         <AlertDialogTrigger asChild>
-                                          <Button type="button" variant="outline" size="icon">
+                                          <Button type="button" variant="outline" size="icon" disabled={!canEditActivities}>
                                             <Trash2 className="h-4 w-4" />
                                           </Button>
                                         </AlertDialogTrigger>

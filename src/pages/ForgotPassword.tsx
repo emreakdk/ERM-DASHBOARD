@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
@@ -7,6 +8,7 @@ import { toast } from '../components/ui/use-toast'
 import { supabase } from '../lib/supabase'
 
 export function ForgotPassword() {
+  const { t } = useTranslation()
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -15,8 +17,8 @@ export function ForgotPassword() {
     const trimmed = email.trim()
     if (!trimmed) {
       toast({
-        title: 'E-posta gerekli',
-        description: 'Lütfen e-posta adresinizi girin.',
+        title: t('auth.emailRequired'),
+        description: t('auth.pleaseEnterEmail'),
         variant: 'destructive',
       })
       return
@@ -28,11 +30,11 @@ export function ForgotPassword() {
       const { error } = await supabase.auth.resetPasswordForEmail(trimmed, { redirectTo })
       if (error) throw error
 
-      toast({ title: 'E-posta kutunuzu kontrol edin.' })
+      toast({ title: t('auth.checkYourEmail') })
       setEmail('')
     } catch (err: any) {
       toast({
-        title: 'Sıfırlama linki gönderilemedi',
+        title: t('auth.resetLinkSendFailed'),
         description: err?.message,
         variant: 'destructive',
       })

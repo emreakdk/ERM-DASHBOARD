@@ -11,30 +11,39 @@ import { Input } from '../ui/input'
 import { Label } from '../ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
 import { Textarea } from '../ui/textarea'
+import { useTranslation } from 'react-i18next'
 
-const productSchema = z
-  .object({
-    name: z.string().min(1, 'Ad zorunludur'),
-    type: z.enum(['service', 'product']),
-    sku: z.string().optional(),
-    unit_price: z.number().finite('Fiyat zorunludur').min(0, 'Fiyat zorunludur'),
-    stock_quantity: z
-      .number()
-      .finite('Stok geçersiz')
-      .int('Stok tam sayı olmalı')
-      .min(0, 'Stok 0 veya daha büyük olmalı')
-      .optional(),
-    description: z.string().optional(),
-  })
-  .superRefine((val, ctx) => {
-    if (val.type === 'service') return
-    if (val.stock_quantity === undefined) return
-    if (!Number.isFinite(val.stock_quantity)) {
-      ctx.addIssue({ code: 'custom', message: 'Stok geçersiz', path: ['stock_quantity'] })
-    }
-  })
+const buildProductSchema = (t: (key: string) => string) =>
+  z
+    .object({
+      name: z.string().min(1, t('products.form.errors.nameRequired')),
+      type: z.enum(['service', 'product']),
+      sku: z.string().optional(),
+      unit_price: z
+        .number()
+        .finite(t('products.form.errors.priceRequired'))
+        .min(0, t('products.form.errors.priceRequired')),
+      stock_quantity: z
+        .number()
+        .finite(t('products.form.errors.stockInvalid'))
+        .int(t('products.form.errors.stockInteger'))
+        .min(0, t('products.form.errors.stockMin'))
+        .optional(),
+      description: z.string().optional(),
+    })
+    .superRefine((val, ctx) => {
+      if (val.type === 'service') return
+      if (val.stock_quantity === undefined) return
+      if (!Number.isFinite(val.stock_quantity)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: t('products.form.errors.stockInvalid'),
+          path: ['stock_quantity'],
+        })
+      }
+    })
 
-type ProductFormValues = z.infer<typeof productSchema>
+type ProductFormValues = z.infer<ReturnType<typeof buildProductSchema>>
 
 type ProductFormProps = {
   initialProduct?: Database['public']['Tables']['products']['Row']
@@ -42,6 +51,7 @@ type ProductFormProps = {
 }
 
 export function ProductForm({ initialProduct, onSuccess }: ProductFormProps) {
+  const { t } = useTranslation()
   const { user } = useAuth()
   const createProduct = useCreateProduct()
   const updateProduct = useUpdateProduct()
@@ -64,6 +74,8 @@ export function ProductForm({ initialProduct, onSuccess }: ProductFormProps) {
     }),
     [initialProduct]
   )
+
+  const productSchema = useMemo(() => buildProductSchema(t), [t])
 
   const {
     register,
@@ -121,14 +133,14 @@ export function ProductForm({ initialProduct, onSuccess }: ProductFormProps) {
   return (
     <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
       <div className="space-y-2">
-        <Label htmlFor="name">Ad</Label>
-        <Input id="name" placeholder="Örn: SEO Danışmanlığı" {...register('name')} />
+        <Label htmlFor="name">{t('products.form.nameLabel')}</Label>
+        <Input id="name" placeholder={t('products.form.namePlaceholder')} {...register('name')} />
         {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
-          <Label>Tip</Label>
+          <Label htmlFor="type">{t('products.form.typeLabel')}</Label>
           <Select
             value={type}
             onValueChange={(v) => {
@@ -140,30 +152,30 @@ export function ProductForm({ initialProduct, onSuccess }: ProductFormProps) {
               }
             }}
           >
-            <SelectTrigger>
-              <SelectValue placeholder="Tip Seç" />
+            <SelectTrigger id="type">
+              <SelectValue placeholder={t('products.form.typePlaceholder')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="service">Hizmet</SelectItem>
-              <SelectItem value="product">Ürün</SelectItem>
+              <SelectItem value="service">{t('common.service')}</SelectItem>
+              <SelectItem value="product">{t('common.product')}</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="sku">SKU</Label>
-          <Input id="sku" placeholder="Örn: SKU-001" {...register('sku')} />
+          <Label htmlFor="sku">{t('products.form.skuLabel')}</Label>
+          <Input id="sku" placeholder={t('products.form.skuPlaceholder')} {...register('sku')} />
         </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="unit_price">Fiyat</Label>
+          <Label htmlFor="unit_price">{t('products.form.priceLabel')}</Label>
           <Input
             id="unit_price"
             type="number"
             step="0.01"
-            placeholder="0"
+            placeholder={t('products.form.pricePlaceholder')}
             {...register('unit_price', { valueAsNumber: true })}
           />
           {errors.unit_price && <p className="text-sm text-destructive">{errors.unit_price.message}</p>}
@@ -171,12 +183,12 @@ export function ProductForm({ initialProduct, onSuccess }: ProductFormProps) {
 
         {watchedType === 'product' ? (
           <div className="space-y-2">
-            <Label htmlFor="stock_quantity">Stok</Label>
+            <Label htmlFor="stock_quantity">{t('products.form.stockLabel')}</Label>
             <Input
               id="stock_quantity"
               type="number"
               step="1"
-              placeholder="0"
+              placeholder={t('products.form.stockPlaceholder')}
               {...register('stock_quantity', {
                 setValueAs: (v) => (v === '' || v === null || v === undefined ? undefined : Number(v)),
               })}
@@ -187,20 +199,20 @@ export function ProductForm({ initialProduct, onSuccess }: ProductFormProps) {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="description">Açıklama</Label>
-        <Textarea id="description" placeholder="(Opsiyonel)" {...register('description')} />
+        <Label htmlFor="description">{t('products.form.descriptionLabel')}</Label>
+        <Textarea id="description" placeholder={t('products.form.descriptionPlaceholder')} {...register('description')} />
       </div>
 
       {(createProduct.error || updateProduct.error) && (
         <p className="text-sm text-destructive">
           {((createProduct.error || updateProduct.error) as any)?.message ||
-            (isEditing ? 'Kayıt güncellenemedi' : 'Kayıt oluşturulamadı')}
+            (isEditing ? t('products.form.updateError') : t('products.form.createError'))}
         </p>
       )}
 
       <div className="flex justify-end">
         <Button type="submit" disabled={createProduct.isPending || updateProduct.isPending || !user}>
-          Kaydet
+          {t('products.form.submitButton')}
         </Button>
       </div>
     </form>

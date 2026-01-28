@@ -1,7 +1,10 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from './contexts/AuthContext'
+import { TenantProvider } from './contexts/TenantContext'
+import { PermissionsProvider } from './contexts/PermissionsContext'
 import { ProtectedRoute } from './components/shared/ProtectedRoute'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { LoginPage } from './pages/LoginPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { DashboardPage } from './pages/DashboardPage'
@@ -19,28 +22,34 @@ import { SettingsPage } from './pages/SettingsPage'
 import { Activities } from './pages/Activities'
 import { ForgotPassword } from './pages/ForgotPassword'
 import { UpdatePassword } from './pages/UpdatePassword'
-import { AgencyTicketsPage } from './pages/AgencyTicketsPage'
-import { AgencyHotelsPage } from './pages/AgencyHotelsPage'
-import { AgencyAirlinesSettingsPage } from './pages/AgencyAirlinesSettingsPage'
-import { AgencyAirlinesReportPage } from './pages/AgencyAirlinesReportPage'
 import { PublicQuote } from './pages/public/PublicQuote'
 import { PublicInvoice } from './pages/public/PublicInvoice'
+import { MasterBrainPanel } from './pages/admin/MasterBrainPanel'
+import { CompanyAdminPanel } from './pages/admin/CompanyAdminPanel'
+import { PackageManagementPage } from './pages/admin/PackageManagementPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
+      refetchOnMount: false,
+      refetchOnReconnect: false,
       retry: 1,
+      staleTime: 5 * 60 * 1000,
+      gcTime: 10 * 60 * 1000,
     },
   },
 })
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <BrowserRouter>
-          <Routes>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <TenantProvider>
+            <PermissionsProvider>
+              <BrowserRouter>
+              <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -144,38 +153,6 @@ function App() {
               }
             />
             <Route
-              path="/agency/tickets"
-              element={
-                <ProtectedRoute>
-                  <AgencyTicketsPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/agency/hotels"
-              element={
-                <ProtectedRoute>
-                  <AgencyHotelsPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/agency/settings/airlines"
-              element={
-                <ProtectedRoute>
-                  <AgencyAirlinesSettingsPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/agency/reports/airlines"
-              element={
-                <ProtectedRoute>
-                  <AgencyAirlinesReportPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
               path="/ayarlar"
               element={
                 <ProtectedRoute>
@@ -183,11 +160,38 @@ function App() {
                 </ProtectedRoute>
               }
             />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </BrowserRouter>
-      </AuthProvider>
-    </QueryClientProvider>
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute allowedRoles={['superadmin']}>
+                  <MasterBrainPanel />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/packages"
+              element={
+                <ProtectedRoute allowedRoles={['superadmin']}>
+                  <PackageManagementPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/company"
+              element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <CompanyAdminPanel />
+                </ProtectedRoute>
+              }
+            />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+              </BrowserRouter>
+            </PermissionsProvider>
+          </TenantProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   )
 }
 

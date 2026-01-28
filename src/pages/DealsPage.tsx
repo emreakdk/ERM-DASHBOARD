@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AppLayout } from '../components/layout/AppLayout'
 import { DealForm } from '../components/forms/DealForm'
 import {
@@ -22,6 +23,8 @@ import { formatCurrency, formatShortDate } from '../lib/format'
 import { cn } from '../lib/utils'
 import type { Database } from '../types/database'
 import { Kanban, Pencil, Plus, Trash2 } from 'lucide-react'
+import { usePermissions } from '../contexts/PermissionsContext'
+import { useQuota } from '../hooks/useQuota'
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
 import { DndContext, PointerSensor, closestCorners, useDroppable, useSensor, useSensors } from '@dnd-kit/core'
 import { useDraggable } from '@dnd-kit/core'
@@ -34,14 +37,14 @@ type Stage = DealRow['stage']
 
 const stageOrder: Stage[] = ['new', 'meeting', 'proposal', 'negotiation', 'won', 'lost']
 
-const stageLabels: Record<Stage, string> = {
-  new: 'Yeni Fırsat',
-  meeting: 'Toplantı',
-  proposal: 'Teklif',
-  negotiation: 'Pazarlık',
-  won: 'Kazanıldı',
-  lost: 'Kaybedildi',
-}
+const getStageLabels = (t: (key: string) => string): Record<Stage, string> => ({
+  new: t('deals.newOpportunity'),
+  meeting: t('deals.meeting'),
+  proposal: t('deals.proposal'),
+  negotiation: t('deals.negotiation'),
+  won: t('deals.won'),
+  lost: t('deals.lost'),
+})
 
 const stageHeaderClasses: Record<Stage, string> = {
   new: 'bg-muted/40 dark:bg-muted/15',
@@ -62,6 +65,8 @@ const stageBadgeClasses: Record<Stage, string> = {
 }
 
 export function DealsPage() {
+  const { t } = useTranslation()
+  const stageLabels = getStageLabels(t)
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -77,6 +82,34 @@ export function DealsPage() {
   const customersQuery = useCustomers()
   const deleteDeal = useDeleteDeal()
   const updateDeal = useUpdateDeal()
+  const { loading: permissionsLoading, canViewModule, canEditModule } = usePermissions()
+  const canViewDeals = canViewModule('deals')
+  const canEditDeals = canEditModule('deals')
+  const dealQuota = useQuota('deals')
+
+  const showEditDenied = useCallback(() => {
+    toast({
+      title: t('errors.unauthorized'),
+      description: t('deals.noPermission'),
+      variant: 'destructive',
+    })
+  }, [t])
+
+  const ensureCanEdit = useCallback(() => {
+    if (!canEditDeals) {
+      showEditDenied()
+      return false
+    }
+    if (!dealQuota.canAdd) {
+      toast({
+        title: t('deals.limitExceeded'),
+        description: dealQuota.message || t('deals.dealLimitReached'),
+        variant: 'destructive',
+      })
+      return false
+    }
+    return true
+  }, [canEditDeals, showEditDenied, dealQuota])
 
   const deals = localDeals
 
@@ -88,11 +121,16 @@ export function DealsPage() {
   useEffect(() => {
     const state = (location.state ?? {}) as any
     if (state?.openNew) {
+      if (!canEditDeals) {
+        showEditDenied()
+        navigate(location.pathname, { replace: true, state: null })
+        return
+      }
       setEditingDeal(null)
       setOpen(true)
       navigate(location.pathname, { replace: true, state: null })
     }
-  }, [location.pathname, location.state, navigate])
+  }, [location.pathname, location.state, navigate, canEditDeals, showEditDenied])
 
   const customersById = useMemo(() => {
     return new Map((customersQuery.data ?? []).map((c) => [c.id, c]))
@@ -137,8 +175,8 @@ export function DealsPage() {
     try {
       await updateDeal.mutateAsync({ id: dealId, patch: { stage } })
     } catch (e: any) {
-      const msg = e?.message || 'Bilinmeyen hata'
-      toast({ title: 'Aşama güncellenemedi', description: msg, variant: 'destructive' })
+      const msg = e?.message || t('admin.unknownError')
+      toast({ title: t('common.updateFailed'), description: msg, variant: 'destructive' })
       dealsQuery.refetch()
     }
   }
@@ -206,31 +244,64 @@ export function DealsPage() {
         <div className="mt-3 flex justify-end gap-2">
           <Button
             variant="outline"
-            size="sm"
+            size="icon"
+            disabled={!canEditDeals}
             onClick={() => {
+              if (!ensureCanEdit()) return
               setEditingDeal(deal)
               setOpen(true)
             }}
           >
-            <Pencil className="mr-2 h-4 w-4" />
-            Düzenle
+            <Pencil className="h-4 w-4" />
+            <span className="sr-only">{t('common.edit')}</span>
           </Button>
-          <Button variant="destructive" size="sm" onClick={() => setDeletingDeal(deal)}>
-            <Trash2 className="mr-2 h-4 w-4" />
-            Sil
+          <Button
+            variant="destructive"
+            size="icon"
+            disabled={!canEditDeals}
+            onClick={() => {
+              if (!ensureCanEdit()) return
+              setDeletingDeal(deal)
+            }}
+          >
+            <Trash2 className="h-4 w-4" />
+            <span className="sr-only">{t('common.delete')}</span>
           </Button>
         </div>
       </div>
     )
   }
 
+  if (permissionsLoading) {
+    return (
+      <AppLayout title={t('nav.deals')}>
+        <div className="flex h-[60vh] items-center justify-center">
+          <div className="text-sm text-muted-foreground">{t('common.loading')}</div>
+        </div>
+      </AppLayout>
+    )
+  }
+
+  if (!canViewDeals) {
+    return (
+      <AppLayout title={t('nav.deals')}>
+        <div className="flex h-[60vh] flex-col items-center justify-center gap-3 text-center">
+          <div className="text-2xl font-semibold">{t('deals.noAccess')}</div>
+          <p className="max-w-md text-muted-foreground">
+            {t('deals.noAccessDescription')}
+          </p>
+        </div>
+      </AppLayout>
+    )
+  }
+
   return (
-    <AppLayout title="Fırsatlar">
+    <AppLayout title={t('nav.deals')}>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-semibold">Fırsatlar</h2>
-            <p className="text-sm text-muted-foreground mt-1">Satış pipeline görünümü</p>
+            <h2 className="text-2xl font-semibold">{t('nav.deals')}</h2>
+            <p className="text-sm text-muted-foreground mt-1">{t('deals.manageDeals')}</p>
           </div>
 
           <Dialog
@@ -242,24 +313,26 @@ export function DealsPage() {
           >
             <DialogTrigger asChild>
               <Button
+                disabled={!canEditDeals}
                 onClick={() => {
+                  if (!ensureCanEdit()) return
                   setEditingDeal(null)
                 }}
               >
                 <Plus className="mr-2 h-4 w-4" />
-                Yeni Fırsat Ekle
+                {t('deals.newDeal')}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>{editingDeal ? 'Fırsatı Düzenle' : 'Yeni Fırsat'}</DialogTitle>
+                <DialogTitle>{editingDeal ? t('deals.editDeal') : t('deals.newDeal')}</DialogTitle>
               </DialogHeader>
               <DealForm
                 initialDeal={editingDeal ?? undefined}
                 onSuccess={() => {
                   setOpen(false)
                   toast({
-                    title: editingDeal ? 'Fırsat güncellendi' : 'Fırsat oluşturuldu',
+                    title: editingDeal ? t('deals.dealUpdated') : t('deals.dealCreated'),
                   })
                   setEditingDeal(null)
                 }}
@@ -285,7 +358,7 @@ export function DealsPage() {
           </div>
         ) : dealsQuery.isError ? (
           <p className="text-sm text-destructive">
-            {(dealsQuery.error as any)?.message || 'Fırsatlar yüklenemedi'}
+            {(dealsQuery.error as any)?.message || t('common.loadFailed')}
           </p>
         ) : (
           <DndContext
@@ -295,6 +368,11 @@ export function DealsPage() {
               setActiveDealId(String(event.active.id))
             }}
             onDragEnd={(event: DragEndEvent) => {
+              if (!canEditDeals) {
+                showEditDenied()
+                setActiveDealId(null)
+                return
+              }
               const dealId = String(event.active.id)
               setActiveDealId(null)
               if (!event.over) return
@@ -397,14 +475,14 @@ export function DealsPage() {
           >
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Silme Onayı</DialogTitle>
+                <DialogTitle>{t('common.deleteConfirm')}</DialogTitle>
               </DialogHeader>
               <div className="text-sm text-muted-foreground">
-                Bu kaydı silmek istediğinize emin misiniz? Bu işlem geri alınamaz.
+                {t('common.deleteWarning')}
               </div>
               <div className="flex justify-end gap-2 pt-2">
                 <Button variant="outline" onClick={() => setDeletingDeal(null)}>
-                  Vazgeç
+                  {t('common.cancel')}
                 </Button>
                 <Button
                   variant="destructive"
@@ -412,11 +490,11 @@ export function DealsPage() {
                   onClick={async () => {
                     try {
                       await deleteDeal.mutateAsync({ id: deletingDeal.id, itemName: deletingDeal.title })
-                      toast({ title: 'Fırsat silindi' })
+                      toast({ title: t('deals.dealDeleted') })
                     } catch (e: any) {
                       toast({
-                        title: 'Silme işlemi başarısız',
-                        description: e?.message || 'Bilinmeyen hata',
+                        title: t('common.deleteFailed'),
+                        description: e?.message || t('admin.unknownError'),
                         variant: 'destructive',
                       })
                     } finally {
@@ -424,7 +502,7 @@ export function DealsPage() {
                     }
                   }}
                 >
-                  Sil
+                  {t('common.delete')}
                 </Button>
               </div>
             </DialogContent>

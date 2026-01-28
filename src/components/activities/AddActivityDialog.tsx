@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useCustomers, useDeals, useCreateActivity, useUpdateActivity } from '../../hooks/useSupabaseQuery'
 import { useAuth } from '../../contexts/AuthContext'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog'
@@ -13,7 +14,7 @@ import { Calendar as CalendarIcon, Check, ChevronsUpDown } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { Calendar } from '../ui/calendar'
 import { format } from 'date-fns'
-import { tr } from 'date-fns/locale'
+import { enUS, tr } from 'date-fns/locale'
 import type { Database } from '../../types/database'
 
 type ActivityType = 'task' | 'meeting' | 'call' | 'email'
@@ -25,14 +26,15 @@ type AddActivityDialogProps = {
   activity?: Database['public']['Tables']['activities']['Row']
 }
 
-const typeLabels: Record<ActivityType, string> = {
-  task: 'Görev',
-  meeting: 'Toplantı',
-  call: 'Arama',
-  email: 'E-posta',
-}
+const getTypeLabels = (t: (key: string) => string): Record<ActivityType, string> => ({
+  task: t('activities.task'),
+  meeting: t('activities.meeting'),
+  call: t('activities.call'),
+  email: t('activities.email'),
+})
 
 export function AddActivityDialog({ open, onOpenChange, defaultCustomerId, activity }: AddActivityDialogProps) {
+  const { t, i18n } = useTranslation()
   const { user } = useAuth()
   const customersQuery = useCustomers()
   const dealsQuery = useDeals()
@@ -40,6 +42,8 @@ export function AddActivityDialog({ open, onOpenChange, defaultCustomerId, activ
   const updateActivity = useUpdateActivity()
 
   const isEdit = Boolean(activity?.id)
+  const typeLabels = useMemo(() => getTypeLabels(t), [t])
+  const dateLocale = i18n.language?.startsWith('en') ? enUS : tr
 
   const [subject, setSubject] = useState('')
   const [type, setType] = useState<ActivityType>('task')
@@ -169,7 +173,7 @@ export function AddActivityDialog({ open, onOpenChange, defaultCustomerId, activ
           },
         })
 
-        toast({ title: 'Aktivite güncellendi' })
+        toast({ title: t('activities.activityUpdated') })
       } else {
         await createActivity.mutateAsync({
           user_id: user.id,
@@ -182,12 +186,16 @@ export function AddActivityDialog({ open, onOpenChange, defaultCustomerId, activ
           is_completed: false,
         })
 
-        toast({ title: 'Aktivite eklendi' })
+        toast({ title: t('activities.activityAdded') })
       }
 
       handleClose(false)
     } catch (e: any) {
-      toast({ title: isEdit ? 'Aktivite güncellenemedi' : 'Aktivite eklenemedi', description: e?.message, variant: 'destructive' })
+      toast({
+        title: t(isEdit ? 'activities.activityUpdateFailed' : 'activities.activityAddFailed'),
+        description: e?.message,
+        variant: 'destructive',
+      })
     }
   }
 
@@ -195,25 +203,25 @@ export function AddActivityDialog({ open, onOpenChange, defaultCustomerId, activ
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>{isEdit ? 'Aktivite Düzenle' : 'Yeni Aktivite'}</DialogTitle>
+          <DialogTitle>{t(isEdit ? 'activities.editActivity' : 'activities.newActivity')}</DialogTitle>
         </DialogHeader>
 
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2 md:col-span-2">
-            <Label htmlFor="activity-subject">Konu</Label>
+            <Label htmlFor="activity-subject">{t('activities.subject')}</Label>
             <Input
               id="activity-subject"
-              placeholder="Teklif Hakkında Görüşme"
+              placeholder={t('activities.subjectPlaceholder')}
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
             />
           </div>
 
           <div className="space-y-2">
-            <Label>Tür</Label>
+            <Label>{t('activities.type')}</Label>
             <Select value={type} onValueChange={(v) => setType(v as ActivityType)}>
               <SelectTrigger>
-                <SelectValue placeholder="Tür seç" />
+                <SelectValue placeholder={t('activities.selectType')} />
               </SelectTrigger>
               <SelectContent>
                 {Object.entries(typeLabels).map(([k, label]) => (
@@ -226,7 +234,7 @@ export function AddActivityDialog({ open, onOpenChange, defaultCustomerId, activ
           </div>
 
           <div className="space-y-2">
-            <Label>Müşteri</Label>
+            <Label>{t('activities.customerLabel')}</Label>
             <Popover open={customerOpen} onOpenChange={setCustomerOpen}>
               <PopoverTrigger asChild>
                 <Button
@@ -241,17 +249,17 @@ export function AddActivityDialog({ open, onOpenChange, defaultCustomerId, activ
                     {selectedCustomer
                       ? selectedCustomer.name
                       : customersQuery.isLoading
-                        ? 'Yükleniyor...'
-                        : 'Müşteri seç'}
+                        ? t('common.loading')
+                        : t('activities.selectCustomer')}
                   </span>
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-[--radix-popover-trigger-width] p-2" align="start">
                 <Command value={customerQuery} onValueChange={setCustomerQuery}>
-                  <CommandInput placeholder="Müşteri ara..." />
+                  <CommandInput placeholder={t('activities.searchCustomerPlaceholder')} />
                   <CommandList>
-                    {filteredCustomers.length === 0 ? <CommandEmpty>Sonuç bulunamadı</CommandEmpty> : null}
+                    {filteredCustomers.length === 0 ? <CommandEmpty>{t('common.noResults')}</CommandEmpty> : null}
                     <CommandGroup>
                       <CommandItem
                         selected={!customerId}
@@ -263,7 +271,7 @@ export function AddActivityDialog({ open, onOpenChange, defaultCustomerId, activ
                         className="flex items-center gap-2"
                       >
                         <Check className={cn('h-4 w-4', !customerId ? 'opacity-100' : 'opacity-0')} />
-                        <span className="truncate">(Seçilmedi)</span>
+                        <span className="truncate">{t('common.notSelected')}</span>
                       </CommandItem>
                       {filteredCustomers.map((c) => {
                         const isSelected = c.id === customerId
@@ -291,7 +299,7 @@ export function AddActivityDialog({ open, onOpenChange, defaultCustomerId, activ
           </div>
 
           <div className="space-y-2">
-            <Label>Tarih</Label>
+            <Label>{t('common.date')}</Label>
             <Popover>
               <PopoverTrigger asChild>
                 <Button
@@ -300,7 +308,7 @@ export function AddActivityDialog({ open, onOpenChange, defaultCustomerId, activ
                   className={cn('w-full justify-start text-left font-normal', !dueDate && 'text-muted-foreground')}
                 >
                   <CalendarIcon className="mr-2 h-4 w-4" />
-                  {dueDate ? format(dueDate, 'd MMMM yyyy', { locale: tr }) : 'Tarih Seç'}
+                  {dueDate ? format(dueDate, 'd MMMM yyyy', { locale: dateLocale }) : t('activities.selectDate')}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-2" align="start">
@@ -310,30 +318,30 @@ export function AddActivityDialog({ open, onOpenChange, defaultCustomerId, activ
                     setDueDate(d)
                     if (d && !dueTime) setDueTime(getDefaultTime())
                   }}
-                  locale={tr}
+                  locale={dateLocale}
                 />
               </PopoverContent>
             </Popover>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="activity-time">Saat</Label>
+            <Label htmlFor="activity-time">{t('common.time')}</Label>
             <Input id="activity-time" type="time" value={dueTime} onChange={(e) => setDueTime(e.target.value)} />
           </div>
 
           <div className="space-y-2 md:col-span-2">
-            <Label htmlFor="activity-desc">Açıklama</Label>
+            <Label htmlFor="activity-desc">{t('common.description')}</Label>
             <textarea
               id="activity-desc"
               className="flex min-h-[90px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-              placeholder="Detaylar..."
+              placeholder={t('activities.descriptionPlaceholder')}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
           </div>
 
           <div className="space-y-2 md:col-span-2">
-            <Label>Fırsat (Opsiyonel)</Label>
+            <Label>{t('activities.dealOptional')}</Label>
             <Popover open={dealOpen} onOpenChange={setDealOpen}>
               <PopoverTrigger asChild>
                 <Button
@@ -348,17 +356,17 @@ export function AddActivityDialog({ open, onOpenChange, defaultCustomerId, activ
                     {selectedDeal
                       ? selectedDeal.title
                       : dealsQuery.isLoading
-                        ? 'Yükleniyor...'
-                        : 'Fırsat seç'}
+                        ? t('common.loading')
+                        : t('activities.selectDeal')}
                   </span>
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-[--radix-popover-trigger-width] p-2" align="start">
                 <Command value={dealQuery} onValueChange={setDealQuery}>
-                  <CommandInput placeholder="Fırsat ara..." />
+                  <CommandInput placeholder={t('activities.searchDealPlaceholder')} />
                   <CommandList>
-                    {filteredDeals.length === 0 ? <CommandEmpty>Sonuç bulunamadı</CommandEmpty> : null}
+                    {filteredDeals.length === 0 ? <CommandEmpty>{t('common.noResults')}</CommandEmpty> : null}
                     <CommandGroup>
                       <CommandItem
                         selected={!dealId}
@@ -369,7 +377,7 @@ export function AddActivityDialog({ open, onOpenChange, defaultCustomerId, activ
                         className="flex items-center gap-2"
                       >
                         <Check className={cn('h-4 w-4', !dealId ? 'opacity-100' : 'opacity-0')} />
-                        <span className="truncate">(Seçilmedi)</span>
+                        <span className="truncate">{t('common.notSelected')}</span>
                       </CommandItem>
                       {filteredDeals.map((d) => {
                         const isSelected = d.id === dealId
@@ -398,10 +406,10 @@ export function AddActivityDialog({ open, onOpenChange, defaultCustomerId, activ
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => handleClose(false)}>
-            İptal
+            {t('common.cancel')}
           </Button>
           <Button type="button" onClick={handleSubmit} disabled={!canSubmit}>
-            {isEdit ? 'Güncelle' : 'Kaydet'}
+            {t(isEdit ? 'common.update' : 'common.save')}
           </Button>
         </DialogFooter>
       </DialogContent>

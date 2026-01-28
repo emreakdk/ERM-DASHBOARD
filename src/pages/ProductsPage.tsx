@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AppLayout } from '../components/layout/AppLayout'
 import { ProductForm } from '../components/forms/ProductForm'
 import {
@@ -21,10 +22,13 @@ import { formatCurrency } from '../lib/format'
 import { cn } from '../lib/utils'
 import type { Database } from '../types/database'
 import { Package, Pencil, Plus, Search, Trash2 } from 'lucide-react'
+import { usePermissions } from '../contexts/PermissionsContext'
+import { useQuota } from '../hooks/useQuota'
 
 type ProductRow = Database['public']['Tables']['products']['Row']
 
 export function ProductsPage() {
+  const { t, i18n } = useTranslation()
   const [open, setOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState<ProductRow | null>(null)
   const [deletingProduct, setDeletingProduct] = useState<ProductRow | null>(null)
@@ -32,6 +36,34 @@ export function ProductsPage() {
 
   const productsQuery = useProducts()
   const deleteProduct = useDeleteProduct()
+  const { loading: permissionsLoading, canViewModule, canEditModule } = usePermissions()
+  const canViewProducts = canViewModule('products')
+  const canEditProducts = canEditModule('products')
+  const productQuota = useQuota('products')
+
+  const showEditDenied = useCallback(() => {
+    toast({
+      title: t('errors.unauthorized'),
+      description: t('products.noPermission'),
+      variant: 'destructive',
+    })
+  }, [t])
+
+  const ensureCanEdit = useCallback(() => {
+    if (!canEditProducts) {
+      showEditDenied()
+      return false
+    }
+    if (!productQuota.canAdd) {
+      toast({
+        title: t('products.limitExceeded'),
+        description: productQuota.message || t('products.productLimitReached'),
+        variant: 'destructive',
+      })
+      return false
+    }
+    return true
+  }, [canEditProducts, showEditDenied, productQuota])
 
   const products = productsQuery.data ?? []
 
@@ -46,26 +78,51 @@ export function ProductsPage() {
     })
   }, [products, searchQuery])
 
+  if (permissionsLoading) {
+    return (
+      <AppLayout title={t('products.pageTitle')}>
+        <div className="flex h-[60vh] items-center justify-center">
+          <div className="text-sm text-muted-foreground">{t('common.loading')}</div>
+        </div>
+      </AppLayout>
+    )
+  }
+
+  if (!canViewProducts) {
+    return (
+      <AppLayout title={t('products.pageTitle')}>
+        <div className="flex h-[60vh] flex-col items-center justify-center gap-3 text-center">
+          <div className="text-2xl font-semibold">{t('products.noAccess')}</div>
+          <p className="max-w-md text-muted-foreground">
+            {t('products.noAccessDescription')}
+          </p>
+        </div>
+      </AppLayout>
+    )
+  }
+
+  const numberLocale = i18n.language?.startsWith('en') ? 'en-US' : 'tr-TR'
+
   return (
-    <AppLayout title="Ürün ve Hizmetler">
+    <AppLayout title={t('products.pageTitle')}>
       <div className="space-y-6">
         <div>
           <div>
-            <h2 className="text-2xl font-semibold">Ürün ve Hizmetler</h2>
-            <p className="text-sm text-muted-foreground mt-1">Kataloğunuzu yönetin</p>
+            <h2 className="text-2xl font-semibold">{t('products.pageTitle')}</h2>
+            <p className="text-sm text-muted-foreground mt-1">{t('products.pageDescription')}</p>
           </div>
         </div>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-3">
-            <CardTitle className="whitespace-nowrap">Liste</CardTitle>
+            <CardTitle className="whitespace-nowrap">{t('products.productList')}</CardTitle>
             <div className="flex flex-1 min-w-0 items-center justify-end gap-2">
               <div className="relative w-full max-w-sm min-w-0">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Ürün adı veya SKU ara..."
+                  placeholder={t('products.searchProductsPlaceholder')}
                   className="pl-9"
                 />
               </div>
@@ -79,26 +136,26 @@ export function ProductsPage() {
               >
                 <DialogTrigger asChild>
                   <Button
+                    disabled={!canEditProducts}
                     onClick={() => {
+                      if (!ensureCanEdit()) return
                       setEditingProduct(null)
                     }}
                   >
                     <Plus className="mr-2 h-4 w-4" />
-                    Yeni Ürün Ekle
+                    {t('products.newProduct')}
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>
-                      {editingProduct ? 'Ürün/Hizmet Düzenle' : 'Yeni Ürün/Hizmet'}
-                    </DialogTitle>
+                    <DialogTitle>{editingProduct ? t('products.editProduct') : t('products.newProduct')}</DialogTitle>
                   </DialogHeader>
                   <ProductForm
                     initialProduct={editingProduct ?? undefined}
                     onSuccess={() => {
                       setOpen(false)
                       toast({
-                        title: editingProduct ? 'Kayıt güncellendi' : 'Kayıt oluşturuldu',
+                        title: editingProduct ? t('products.productUpdated') : t('products.productCreated'),
                       })
                       setEditingProduct(null)
                     }}
@@ -116,19 +173,19 @@ export function ProductsPage() {
               </div>
             ) : productsQuery.isError ? (
               <p className="text-sm text-destructive">
-                {(productsQuery.error as any)?.message || 'Ürünler yüklenemedi'}
+                {(productsQuery.error as any)?.message || t('products.loadFailed')}
               </p>
             ) : (
               <div className="rounded-md border">
                 <table className="w-full">
                   <thead>
                     <tr className="border-b bg-muted/50">
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Ad</th>
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">SKU</th>
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Tip</th>
-                      <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">Fiyat</th>
-                      <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">Stok</th>
-                      <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">İşlem</th>
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">{t('common.name')}</th>
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">{t('products.sku')}</th>
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">{t('common.type')}</th>
+                      <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">{t('common.price')}</th>
+                      <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">{t('common.stock')}</th>
+                      <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">{t('table.actions')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -139,7 +196,7 @@ export function ProductsPage() {
                             <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
                               <Package className="h-5 w-5 text-muted-foreground" />
                             </div>
-                            <p className="text-sm text-muted-foreground">Kataloğunuz boş.</p>
+                            <p className="text-sm text-muted-foreground">{t('products.emptyList')}</p>
                           </div>
                         </td>
                       </tr>
@@ -166,33 +223,39 @@ export function ProductsPage() {
                                 variant="outline"
                                 className={cn('rounded-full px-2.5 py-0.5 text-xs font-medium', badgeClass)}
                               >
-                                {isProduct ? 'Ürün' : 'Hizmet'}
+                                {isProduct ? t('common.product') : t('common.service')}
                               </Badge>
                             </td>
                             <td className="p-4 text-right tabular-nums">{formatCurrency(Number(p.unit_price ?? 0))}</td>
                             <td className="p-4 text-right tabular-nums">
-                              {isProduct ? (p.stock_quantity ?? 0).toLocaleString('tr-TR') : '-'}
+                              {isProduct ? (p.stock_quantity ?? 0).toLocaleString(numberLocale) : '-'}
                             </td>
                             <td className="p-4 text-right">
                               <div className="flex justify-end gap-2">
                                 <Button
                                   variant="outline"
                                   size="sm"
+                                  disabled={!canEditProducts}
                                   onClick={() => {
+                                    if (!ensureCanEdit()) return
                                     setEditingProduct(p)
                                     setOpen(true)
                                   }}
                                 >
                                   <Pencil className="mr-2 h-4 w-4" />
-                                  Düzenle
+                                  {t('common.edit')}
                                 </Button>
                                 <Button
                                   variant="destructive"
                                   size="sm"
-                                  onClick={() => setDeletingProduct(p)}
+                                  disabled={!canEditProducts}
+                                  onClick={() => {
+                                    if (!ensureCanEdit()) return
+                                    setDeletingProduct(p)
+                                  }}
                                 >
                                   <Trash2 className="mr-2 h-4 w-4" />
-                                  Sil
+                                  {t('common.delete')}
                                 </Button>
                               </div>
                             </td>
@@ -215,14 +278,12 @@ export function ProductsPage() {
         >
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Silme Onayı</AlertDialogTitle>
-              <AlertDialogDescription>
-                Bu kaydı silmek istediğinize emin misiniz? Bu işlem geri alınamaz.
-              </AlertDialogDescription>
+              <AlertDialogTitle>{t('products.deleteProduct')}</AlertDialogTitle>
+              <AlertDialogDescription>{t('common.deleteWarning')}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <Button variant="outline" onClick={() => setDeletingProduct(null)}>
-                Vazgeç
+                {t('common.cancel')}
               </Button>
               <Button
                 variant="destructive"
@@ -234,11 +295,11 @@ export function ProductsPage() {
                       id: deletingProduct.id,
                       itemName: deletingProduct.name,
                     })
-                    toast({ title: 'Kayıt silindi' })
+                    toast({ title: t('products.productDeleted') })
                   } catch (e: any) {
                     toast({
-                      title: 'Silme işlemi başarısız',
-                      description: (e as any)?.message || 'Bilinmeyen hata',
+                      title: t('products.deleteFailed'),
+                      description: (e as any)?.message || t('common.errorOccurred'),
                       variant: 'destructive',
                     })
                   } finally {
@@ -246,7 +307,7 @@ export function ProductsPage() {
                   }
                 }}
               >
-                Sil
+                {t('common.delete')}
               </Button>
             </AlertDialogFooter>
           </AlertDialogContent>

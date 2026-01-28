@@ -74,10 +74,10 @@ export function PublicQuote() {
         }
 
         if (!cancelled) {
-          setPayload(data as any)
+          setPayload(data as PublicQuotePayload)
         }
-      } catch (e: any) {
-        if (!cancelled) setError(e?.message || 'Teklif yüklenemedi')
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Teklif yüklenemedi')
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -102,8 +102,8 @@ export function PublicQuote() {
       if (error) throw error
 
       setPayload((prev) => (prev ? { ...prev, quote: { ...prev.quote, status: next } } : prev))
-    } catch (e: any) {
-      setError(e?.message || 'İşlem başarısız')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'İşlem başarısız')
     } finally {
       setSubmitting(false)
     }

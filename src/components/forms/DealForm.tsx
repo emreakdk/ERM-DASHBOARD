@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Controller, useForm } from 'react-hook-form'
 import { format } from 'date-fns'
+import { useTranslation } from 'react-i18next'
 
 import { useAuth } from '../../contexts/AuthContext'
 import { useCreateDeal, useCustomers, useUpdateDeal } from '../../hooks/useSupabaseQuery'
@@ -13,15 +14,16 @@ import { Label } from '../ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
 import { UnifiedDatePicker } from '../shared/UnifiedDatePicker'
 
-const dealSchema = z.object({
-  title: z.string().min(1, 'Başlık zorunludur'),
-  customerId: z.string().min(1, 'Müşteri zorunludur'),
-  value: z.number().nonnegative('Tutar 0 veya büyük olmalı'),
-  stage: z.enum(['new', 'meeting', 'proposal', 'negotiation', 'won', 'lost']),
-  expectedCloseDate: z.date(),
-})
+const createDealSchema = (t: (key: string) => string) =>
+  z.object({
+    title: z.string().min(1, t('deals.form.validation.titleRequired')),
+    customerId: z.string().min(1, t('deals.form.validation.customerRequired')),
+    value: z.number().nonnegative(t('deals.form.validation.valueNonNegative')),
+    stage: z.enum(['new', 'meeting', 'proposal', 'negotiation', 'won', 'lost']),
+    expectedCloseDate: z.date(),
+  })
 
-type DealFormValues = z.infer<typeof dealSchema>
+type DealFormValues = z.infer<ReturnType<typeof createDealSchema>>
 
 type DealRow = Database['public']['Tables']['deals']['Row']
 
@@ -31,10 +33,13 @@ type DealFormProps = {
 }
 
 export function DealForm({ initialDeal, onSuccess }: DealFormProps) {
+  const { t } = useTranslation()
   const { user } = useAuth()
   const customersQuery = useCustomers()
   const createDeal = useCreateDeal()
   const updateDeal = useUpdateDeal()
+
+  const dealSchema = useMemo(() => createDealSchema(t), [t])
 
   const isEditing = Boolean(initialDeal?.id)
 
@@ -107,20 +112,20 @@ export function DealForm({ initialDeal, onSuccess }: DealFormProps) {
   return (
     <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
       <div className="space-y-2">
-        <Label htmlFor="title">Başlık</Label>
-        <Input id="title" placeholder="Örn: Website Redesign Project" {...register('title')} />
+        <Label htmlFor="title">{t('deals.form.title')}</Label>
+        <Input id="title" placeholder={t('deals.form.titlePlaceholder')} {...register('title')} />
         {errors.title && <p className="text-sm text-destructive">{errors.title.message}</p>}
       </div>
 
       <div className="space-y-2">
-        <Label>Müşteri</Label>
+        <Label>{t('deals.form.customer')}</Label>
         <Controller
           control={control}
           name="customerId"
           render={({ field }) => (
             <Select value={field.value} onValueChange={field.onChange}>
               <SelectTrigger>
-                <SelectValue placeholder="Müşteri seç" />
+                <SelectValue placeholder={t('deals.form.selectCustomer')} />
               </SelectTrigger>
               <SelectContent>
                 {(customersQuery.data ?? []).map((c) => (
@@ -137,28 +142,28 @@ export function DealForm({ initialDeal, onSuccess }: DealFormProps) {
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="value">Tutar</Label>
+          <Label htmlFor="value">{t('deals.form.value')}</Label>
           <Input id="value" type="number" step="0.01" {...register('value', { valueAsNumber: true })} />
           {errors.value && <p className="text-sm text-destructive">{errors.value.message}</p>}
         </div>
 
         <div className="space-y-2">
-          <Label>Aşama</Label>
+          <Label>{t('deals.form.stage')}</Label>
           <Controller
             control={control}
             name="stage"
             render={({ field }) => (
               <Select value={field.value} onValueChange={field.onChange}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Aşama seç" />
+                  <SelectValue placeholder={t('deals.form.stagePlaceholder')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="new">Yeni Fırsat</SelectItem>
-                  <SelectItem value="meeting">Toplantı</SelectItem>
-                  <SelectItem value="proposal">Teklif</SelectItem>
-                  <SelectItem value="negotiation">Pazarlık</SelectItem>
-                  <SelectItem value="won">Kazanıldı</SelectItem>
-                  <SelectItem value="lost">Kaybedildi</SelectItem>
+                  <SelectItem value="new">{t('deals.newOpportunity')}</SelectItem>
+                  <SelectItem value="meeting">{t('deals.meeting')}</SelectItem>
+                  <SelectItem value="proposal">{t('deals.proposal')}</SelectItem>
+                  <SelectItem value="negotiation">{t('deals.negotiation')}</SelectItem>
+                  <SelectItem value="won">{t('deals.won')}</SelectItem>
+                  <SelectItem value="lost">{t('deals.lost')}</SelectItem>
                 </SelectContent>
               </Select>
             )}
@@ -171,7 +176,7 @@ export function DealForm({ initialDeal, onSuccess }: DealFormProps) {
         name="expectedCloseDate"
         render={({ field }) => (
           <UnifiedDatePicker
-            label="Tahmini Kapanış"
+            label={t('deals.form.expectedCloseDate')}
             value={field.value}
             onChange={(d) => field.onChange(d ?? new Date())}
           />
@@ -181,13 +186,13 @@ export function DealForm({ initialDeal, onSuccess }: DealFormProps) {
       {(createDeal.error || updateDeal.error) && (
         <p className="text-sm text-destructive">
           {((createDeal.error || updateDeal.error) as any)?.message ||
-            (isEditing ? 'Fırsat güncellenemedi' : 'Fırsat oluşturulamadı')}
+            (isEditing ? t('deals.form.updateFailed') : t('deals.form.createFailed'))}
         </p>
       )}
 
       <div className="flex justify-end">
         <Button type="submit" disabled={createDeal.isPending || updateDeal.isPending || !user}>
-          Kaydet
+          {t('deals.form.submit')}
         </Button>
       </div>
     </form>

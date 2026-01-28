@@ -4,10 +4,14 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { Controller, useFieldArray, useForm } from 'react-hook-form'
 import { format } from 'date-fns'
 import { Trash2, Plus, Check, ChevronsUpDown } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 import { useAuth } from '../../contexts/AuthContext'
 import { useCreateInvoice, useCustomers, useUpdateInvoice, useProducts } from '../../hooks/useSupabaseQuery'
+import { useQuotaGuard } from '../../hooks/useQuotaGuard'
+import { supabase } from '../../lib/supabase'
 import type { Database } from '../../types/database'
+import { UpgradeRequiredModal } from '../modals/UpgradeRequiredModal'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Label } from '../ui/label'
@@ -44,25 +48,23 @@ import {
 import { UnifiedDatePicker } from '../shared/UnifiedDatePicker'
 import { cn } from '../../lib/utils'
 
-const invoiceItemSchema = z.object({
+const createInvoiceItemSchema = (t: any) => z.object({
   productId: z.string().optional(),
-  description: z.string().min(1, 'Ürün/Hizmet zorunludur'),
-  quantity: z.number().positive('Adet 0dan büyük olmalı'),
-  unitPrice: z.number().nonnegative('Fiyat 0 veya büyük olmalı'),
-  taxRate: z.number().min(0).max(100, 'KDV oranı 0-100 arası olmalı'),
+  description: z.string().min(1, t('invoices.form.validation.productRequired')),
+  quantity: z.number().positive(t('invoices.form.validation.quantityPositive')),
+  unitPrice: z.number().nonnegative(t('invoices.form.validation.priceNonNegative')),
+  taxRate: z.number().min(0).max(100, t('invoices.form.validation.taxRateRange')),
 })
 
-const invoiceSchema = z.object({
-  customerId: z.string().min(1, 'Müşteri zorunludur'),
+const createInvoiceSchema = (t: any) => z.object({
+  customerId: z.string().min(1, t('invoices.form.validation.customerRequired')),
   invoiceDate: z.date(),
   dueDate: z.date(),
-  invoiceNumber: z.string().min(1, 'Fatura no zorunludur'),
+  invoiceNumber: z.string().min(1, t('invoices.form.validation.invoiceNumberRequired')),
   taxInclusive: z.boolean(),
   notes: z.string().optional(),
-  items: z.array(invoiceItemSchema).min(1, 'En az 1 kalem ekleyin'),
+  items: z.array(createInvoiceItemSchema(t)).min(1, t('invoices.form.validation.minOneItem')),
 })
-
-type CreateInvoiceValues = z.infer<typeof invoiceSchema>
 
 type InvoicePrefill = {
   customerId?: string
@@ -84,13 +86,25 @@ function createDefaultInvoiceNumber() {
 }
 
 export function CreateInvoiceForm({ initialInvoice, initialItems, prefill, onSuccess }: CreateInvoiceFormProps) {
+  const { t } = useTranslation()
   const { user } = useAuth()
   const customersQuery = useCustomers()
   const productsQuery = useProducts()
   const createInvoice = useCreateInvoice()
   const updateInvoice = useUpdateInvoice()
+  const { canPerformAction } = useQuotaGuard()
+  
+  const invoiceSchema = useMemo(() => createInvoiceSchema(t), [t])
+  type CreateInvoiceValues = z.infer<typeof invoiceSchema>
 
   const [openProductPicker, setOpenProductPicker] = useState<number | null>(null)
+  const [upgradeModal, setUpgradeModal] = useState<{
+    open: boolean
+    reason?: string
+    message?: string
+    current?: number
+    limit?: number
+  }>({ open: false })
 
   const isEditing = Boolean(initialInvoice?.id)
   const products = productsQuery.data ?? []
@@ -206,6 +220,21 @@ export function CreateInvoiceForm({ initialInvoice, initialItems, prefill, onSuc
   const onSubmit = async (values: CreateInvoiceValues) => {
     if (!user) return
 
+    // Kota kontrolü - sadece yeni fatura oluştururken
+    if (!isEditing) {
+      const quotaCheck = canPerformAction('CREATE_INVOICE')
+      if (!quotaCheck.allowed) {
+        setUpgradeModal({
+          open: true,
+          reason: quotaCheck.reason,
+          message: quotaCheck.message,
+          current: quotaCheck.current,
+          limit: quotaCheck.limit,
+        })
+        return
+      }
+    }
+
     const finalTotals = (values.items ?? []).reduce(
       (acc, it) => {
         const { lineTotal, taxAmount, subtotalAmount } = calculateLineTotals(it)
@@ -232,7 +261,7 @@ export function CreateInvoiceForm({ initialInvoice, initialItems, prefill, onSuc
     if (isEditing && initialInvoice?.id) {
       await updateInvoice.mutateAsync({
         id: initialInvoice.id,
-        invoice: {
+        patch: {
           customer_id: values.customerId,
           invoice_number: values.invoiceNumber,
           invoice_date: format(values.invoiceDate, 'yyyy-MM-dd'),
@@ -243,8 +272,19 @@ export function CreateInvoiceForm({ initialInvoice, initialItems, prefill, onSuc
           total_amount: finalTotals.total,
           notes: values.notes?.trim() || null,
         },
-        items: mappedItems,
       })
+
+      // Delete existing items and create new ones
+      await supabase
+        .from('invoice_items')
+        .delete()
+        .eq('invoice_id', initialInvoice.id)
+
+      if (mappedItems.length > 0) {
+        await supabase
+          .from('invoice_items')
+          .insert(mappedItems.map(item => ({ ...item, invoice_id: initialInvoice.id })))
+      }
 
       onSuccess?.()
       return
@@ -270,18 +310,28 @@ export function CreateInvoiceForm({ initialInvoice, initialItems, prefill, onSuc
   }
 
   return (
-    <form className="space-y-6" onSubmit={handleSubmit(onSubmit)}>
+    <>
+      <UpgradeRequiredModal
+        open={upgradeModal.open}
+        onClose={() => setUpgradeModal({ open: false })}
+        reason={upgradeModal.reason}
+        message={upgradeModal.message}
+        current={upgradeModal.current}
+        limit={upgradeModal.limit}
+        resourceType="invoices"
+      />
+      <form className="space-y-6" onSubmit={handleSubmit(onSubmit)}>
       <div className="space-y-4">
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label>Müşteri</Label>
+            <Label>{t('invoices.form.customer')}</Label>
             <Controller
               control={control}
               name="customerId"
               render={({ field }) => (
                 <Select value={field.value} onValueChange={field.onChange}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Müşteri seç" />
+                    <SelectValue placeholder={t('invoices.form.selectCustomer')} />
                   </SelectTrigger>
                   <SelectContent>
                     {(customersQuery.data ?? []).map((c) => (
@@ -299,7 +349,7 @@ export function CreateInvoiceForm({ initialInvoice, initialItems, prefill, onSuc
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="invoiceNumber">Fatura No</Label>
+            <Label htmlFor="invoiceNumber">{t('invoices.form.invoiceNumber')}</Label>
             <Input id="invoiceNumber" {...register('invoiceNumber')} />
             {errors.invoiceNumber && (
               <p className="text-sm text-destructive">{errors.invoiceNumber.message}</p>
@@ -313,7 +363,7 @@ export function CreateInvoiceForm({ initialInvoice, initialItems, prefill, onSuc
             name="invoiceDate"
             render={({ field }) => (
               <UnifiedDatePicker
-                label="Fatura Tarihi"
+                label={t('invoices.form.invoiceDate')}
                 value={field.value}
                 onChange={(d) => field.onChange(d ?? new Date())}
               />
@@ -324,7 +374,7 @@ export function CreateInvoiceForm({ initialInvoice, initialItems, prefill, onSuc
             name="dueDate"
             render={({ field }) => (
               <UnifiedDatePicker
-                label="Vade Tarihi"
+                label={t('invoices.form.dueDate')}
                 value={field.value}
                 onChange={(d) => field.onChange(d ?? new Date())}
               />
@@ -335,7 +385,7 @@ export function CreateInvoiceForm({ initialInvoice, initialItems, prefill, onSuc
 
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-base font-semibold">Kalemler</h3>
+          <h3 className="text-base font-semibold">{t('invoices.form.itemsSection')}</h3>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <Controller
@@ -350,7 +400,7 @@ export function CreateInvoiceForm({ initialInvoice, initialItems, prefill, onSuc
                 )}
               />
               <Label htmlFor="taxInclusive" className="text-sm font-normal cursor-pointer">
-                Fiyatlara KDV Dahildir
+                {t('invoices.form.taxInclusive')}
               </Label>
             </div>
             <Button
@@ -360,7 +410,7 @@ export function CreateInvoiceForm({ initialInvoice, initialItems, prefill, onSuc
               onClick={() => append({ productId: undefined, description: '', quantity: 1, unitPrice: 0, taxRate: 20 })}
             >
               <Plus className="mr-2 h-4 w-4" />
-              Kalem Ekle
+              {t('invoices.form.addItem')}
             </Button>
           </div>
         </div>
@@ -369,11 +419,11 @@ export function CreateInvoiceForm({ initialInvoice, initialItems, prefill, onSuc
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[35%]">Ürün/Hizmet</TableHead>
-                <TableHead className="w-[12%] text-right">Adet</TableHead>
-                <TableHead className="w-[18%] text-right">Birim Fiyat</TableHead>
-                <TableHead className="w-[12%] text-right">KDV %</TableHead>
-                <TableHead className="w-[18%] text-right">Tutar</TableHead>
+                <TableHead className="w-[35%]">{t('invoices.form.productService')}</TableHead>
+                <TableHead className="w-[12%] text-right">{t('invoices.form.quantity')}</TableHead>
+                <TableHead className="w-[18%] text-right">{t('invoices.form.unitPrice')}</TableHead>
+                <TableHead className="w-[12%] text-right">{t('invoices.form.taxRate')}</TableHead>
+                <TableHead className="w-[18%] text-right">{t('invoices.form.total')}</TableHead>
                 <TableHead className="w-[5%]"></TableHead>
               </TableRow>
             </TableHeader>
@@ -392,7 +442,7 @@ export function CreateInvoiceForm({ initialInvoice, initialItems, prefill, onSuc
                         <PopoverTrigger asChild>
                           <div className="relative">
                             <Input
-                              placeholder="Ürün seç veya yaz..."
+                              placeholder={t('invoices.form.selectOrType')}
                               {...register(`items.${index}.description` as const)}
                               onClick={() => setOpenProductPicker(index)}
                               className="pr-8"
@@ -402,10 +452,10 @@ export function CreateInvoiceForm({ initialInvoice, initialItems, prefill, onSuc
                         </PopoverTrigger>
                         <PopoverContent className="w-[400px] p-2 z-[9999]" align="start">
                           <Command>
-                            <CommandInput placeholder="Ürün ara..." />
+                            <CommandInput placeholder={t('invoices.form.searchProduct')} />
                             <CommandList className="max-h-[250px]">
                               {products.length === 0 ? (
-                                <CommandEmpty>Ürün bulunamadı</CommandEmpty>
+                                <CommandEmpty>{t('invoices.form.noProductFound')}</CommandEmpty>
                               ) : null}
                               <CommandGroup>
                                 {products.map((product) => (
@@ -503,7 +553,7 @@ export function CreateInvoiceForm({ initialInvoice, initialItems, prefill, onSuc
                         size="icon"
                         onClick={() => remove(index)}
                         disabled={fields.length === 1}
-                        title="Kaldır"
+                        title={t('invoices.form.remove')}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -522,22 +572,22 @@ export function CreateInvoiceForm({ initialInvoice, initialItems, prefill, onSuc
 
       <div className="rounded-lg border p-4 space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="notes">Notlar</Label>
-          <Textarea id="notes" placeholder="Opsiyonel" rows={2} {...register('notes')} />
+          <Label htmlFor="notes">{t('invoices.form.notes')}</Label>
+          <Textarea id="notes" placeholder={t('invoices.form.optional')} rows={2} {...register('notes')} />
         </div>
 
         <div className="border-t pt-4">
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Ara Toplam (Matrah)</span>
+              <span className="text-muted-foreground">{t('invoices.form.subtotal')}</span>
               <span className="font-mono font-medium">₺{totals.subtotal.toFixed(2)}</span>
             </div>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Toplam KDV</span>
+              <span className="text-muted-foreground">{t('invoices.form.totalTax')}</span>
               <span className="font-mono font-medium">₺{totals.tax.toFixed(2)}</span>
             </div>
             <div className="flex items-center justify-between pt-2 border-t">
-              <span className="font-semibold">Genel Toplam</span>
+              <span className="font-semibold">{t('invoices.form.grandTotal')}</span>
               <span className="text-lg font-bold font-mono">₺{totals.total.toFixed(2)}</span>
             </div>
           </div>
@@ -547,7 +597,7 @@ export function CreateInvoiceForm({ initialInvoice, initialItems, prefill, onSuc
       {(createInvoice.error || updateInvoice.error) && (
         <p className="text-sm text-destructive">
           {((createInvoice.error || updateInvoice.error) as any)?.message ||
-            (isEditing ? 'Fatura güncellenemedi' : 'Fatura oluşturulamadı')}
+            (isEditing ? t('invoices.form.updateFailed') : t('invoices.form.createFailed'))}
         </p>
       )}
 
@@ -556,9 +606,10 @@ export function CreateInvoiceForm({ initialInvoice, initialItems, prefill, onSuc
           type="submit"
           disabled={createInvoice.isPending || updateInvoice.isPending || !user}
         >
-          {isEditing ? 'Faturayı Güncelle' : 'Fatura Oluştur'}
+          {isEditing ? t('invoices.form.updateInvoice') : t('invoices.form.createInvoice')}
         </Button>
       </div>
     </form>
+    </>
   )
 }

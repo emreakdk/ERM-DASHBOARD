@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AppLayout } from '../components/layout/AppLayout'
 import { CreateInvoiceForm } from '../components/forms/CreateInvoiceForm'
 import {
@@ -19,7 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../components/ui/dialog'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '../components/ui/sheet'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '../components/ui/sheet'
 import { Skeleton } from '../components/ui/skeleton'
 import { toast } from '../components/ui/use-toast'
 import { InvoicePrintView } from '../components/invoices/InvoicePrintView'
@@ -33,7 +34,6 @@ import {
   useInvoicesByDateRange,
   useUpdateInvoiceStatus,
 } from '../hooks/useSupabaseQuery'
-import { INVOICE_STATUS_LABELS } from '../lib/constants'
 import { formatCurrency, formatShortDate } from '../lib/format'
 import type { Database } from '../types/database'
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover'
@@ -50,7 +50,7 @@ import {
   startOfYear,
   subMonths,
 } from 'date-fns'
-import { tr } from 'date-fns/locale'
+import { enUS, tr } from 'date-fns/locale'
 import {
   Calendar as CalendarIcon,
   CheckCircle2,
@@ -70,6 +70,8 @@ import { Input } from '../components/ui/input'
 import { Textarea } from '../components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
+import { usePermissions } from '../contexts/PermissionsContext'
+import { useQuota } from '../hooks/useQuota'
 
 type InvoiceRow = Database['public']['Tables']['invoices']['Row']
 
@@ -106,23 +108,24 @@ const paymentStatusBadgeClasses: Record<string, string> = {
   paid: statusBadgeClasses.paid,
 }
 
-function getInvoicePaymentStatus(inv: any) {
+function getInvoicePaymentStatus(inv: any, t: (key: string) => string) {
   const baseStatus = String(inv?.status ?? '')
-  if (baseStatus === 'cancelled') return { key: 'cancelled', label: INVOICE_STATUS_LABELS.cancelled }
-  if (baseStatus === 'draft') return { key: 'draft', label: INVOICE_STATUS_LABELS.draft }
-  if (baseStatus === 'paid') return { key: 'paid', label: 'Ödendi' }
+  if (baseStatus === 'cancelled') return { key: 'cancelled', label: t('invoices.cancelled') }
+  if (baseStatus === 'draft') return { key: 'draft', label: t('invoices.draft') }
+  if (baseStatus === 'paid') return { key: 'paid', label: t('invoices.paid') }
 
   const total = Number(inv?.total_amount ?? 0)
   const paidAmount = Array.isArray(inv?.payments)
     ? (inv.payments as any[]).reduce((acc, p) => acc + Number(p?.amount ?? 0), 0)
     : 0
 
-  if (paidAmount <= 0) return { key: 'pending', label: 'Bekliyor' }
-  if (paidAmount < total) return { key: 'partial', label: 'Kısmi Ödeme' }
-  return { key: 'paid', label: 'Ödendi' }
+  if (paidAmount <= 0) return { key: 'pending', label: t('invoices.pending') }
+  if (paidAmount < total) return { key: 'partial', label: t('invoices.partial') }
+  return { key: 'paid', label: t('invoices.paid') }
 }
 
 export function InvoicesPage() {
+  const { t, i18n } = useTranslation()
   const now = new Date()
   const [searchParams, setSearchParams] = useSearchParams()
   const openInvoiceId = searchParams.get('open')
@@ -137,14 +140,43 @@ export function InvoicesPage() {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const [paymentAmount, setPaymentAmount] = useState('')
   const [paymentDate, setPaymentDate] = useState(() => format(new Date(), 'yyyy-MM-dd'))
-  const [paymentMethod, setPaymentMethod] = useState<string>('Banka')
+  const [paymentMethod, setPaymentMethod] = useState<string>('bank')
   const [paymentNotes, setPaymentNotes] = useState('')
 
   const [quickPaymentAmount, setQuickPaymentAmount] = useState('')
   const [quickPaymentDate, setQuickPaymentDate] = useState(() => format(new Date(), 'yyyy-MM-dd'))
-  const [quickPaymentMethod, setQuickPaymentMethod] = useState<string>('Banka')
+  const [quickPaymentMethod, setQuickPaymentMethod] = useState<string>('bank')
   const [searchQuery, setSearchQuery] = useState('')
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined)
+  const { loading: permissionsLoading, canViewModule, canEditModule } = usePermissions()
+  const canViewInvoices = canViewModule('invoices')
+  const canEditInvoices = canEditModule('invoices')
+  const invoiceQuota = useQuota('invoices')
+  const dateLocale = useMemo(() => (i18n.language?.startsWith('en') ? enUS : tr), [i18n.language])
+
+  const showEditDenied = useCallback(() => {
+    toast({
+      title: t('errors.unauthorized'),
+      description: t('invoices.noPermission'),
+      variant: 'destructive',
+    })
+  }, [t])
+
+  const ensureCanEdit = useCallback(() => {
+    if (!canEditInvoices) {
+      showEditDenied()
+      return false
+    }
+    if (!invoiceQuota.canAdd) {
+      toast({
+        title: t('invoices.limitExceeded'),
+        description: invoiceQuota.message || t('invoices.invoiceLimitReached'),
+        variant: 'destructive',
+      })
+      return false
+    }
+    return true
+  }, [canEditInvoices, showEditDenied, invoiceQuota])
 
   const dateFromStr = useMemo(() => {
     return dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : undefined
@@ -155,11 +187,11 @@ export function InvoicesPage() {
   }, [dateRange?.to])
 
   const dateRangeLabel = useMemo(() => {
-    if (!dateRange?.from || !dateRange?.to) return 'Tarih Aralığı'
-    const from = format(dateRange.from, 'd MMM', { locale: tr })
-    const to = format(dateRange.to, 'd MMM', { locale: tr })
+    if (!dateRange?.from || !dateRange?.to) return t('dashboard.dateRange')
+    const from = format(dateRange.from, 'd MMM', { locale: dateLocale })
+    const to = format(dateRange.to, 'd MMM', { locale: dateLocale })
     return `${from} - ${to}`
-  }, [dateRange?.from, dateRange?.to])
+  }, [dateLocale, dateRange?.from, dateRange?.to, t])
 
   const invoicesQuery = useInvoicesByDateRange({ from: dateFromStr, to: dateToStr })
   const customersQuery = useCustomers()
@@ -189,6 +221,22 @@ export function InvoicesPage() {
     const percent = total <= 0 ? 0 : Math.min(100, (paidAmount / total) * 100)
     return { total, paidAmount, remaining, percent }
   }, [quickPaymentsQuery.data, selectedInvoiceForPayment?.total_amount])
+  const currencySymbol = '₺'
+
+  const getPaymentMethodLabel = useCallback(
+    (method?: string | null) => {
+      if (!method) return '-'
+      const normalized = method.toString().toLowerCase().trim()
+      if (normalized.includes('banka') || normalized === 'bank') return t('invoices.bank')
+      if (normalized.includes('nakit') || normalized === 'cash') return t('invoices.cash')
+      if (normalized.includes('kredi') || normalized.includes('card')) return t('invoices.creditCard')
+      if (normalized.includes('diğer') || normalized.includes('diger') || normalized === 'other') {
+        return t('invoices.other')
+      }
+      return method
+    },
+    [t]
+  )
 
   const customersById = useMemo(() => {
     return new Map((customersQuery.data ?? []).map((c) => [c.id, c]))
@@ -225,6 +273,12 @@ export function InvoicesPage() {
   useEffect(() => {
     if (!openInvoiceId) return
 
+    if (!canEditInvoices) {
+      showEditDenied()
+      setSearchParams({}, { replace: true })
+      return
+    }
+
     const invoices = invoicesQuery.data ?? []
     const match = invoices.find((inv) => inv.id === openInvoiceId)
 
@@ -239,17 +293,40 @@ export function InvoicesPage() {
       setAutoOpenAttempts((n) => n + 1)
       invoicesQuery.refetch()
     }
-  }, [autoOpenAttempts, invoicesQuery, openInvoiceId, setSearchParams])
+  }, [autoOpenAttempts, canEditInvoices, invoicesQuery, openInvoiceId, setSearchParams, showEditDenied])
+
+  if (permissionsLoading) {
+    return (
+      <AppLayout title={t('nav.invoices')}>
+        <div className="flex h-[60vh] items-center justify-center">
+          <div className="text-sm text-muted-foreground">{t('common.loading')}</div>
+        </div>
+      </AppLayout>
+    )
+  }
+
+  if (!canViewInvoices) {
+    return (
+      <AppLayout title={t('nav.invoices')}>
+        <div className="flex h-[60vh] flex-col items-center justify-center gap-3 text-center">
+          <div className="text-2xl font-semibold">{t('invoices.noAccess')}</div>
+          <p className="max-w-md text-muted-foreground">
+            {t('invoices.noAccessDescription')}
+          </p>
+        </div>
+      </AppLayout>
+    )
+  }
 
   return (
-    <AppLayout title="Faturalar">
+    <AppLayout title={t('nav.invoices')}>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-semibold">Faturalar</h2>
+            <h2 className="text-2xl font-semibold">{t('nav.invoices')}</h2>
             <p className="text-sm text-muted-foreground mt-1">
-              Faturalarınızı oluşturun ve yönetin
+              {t('invoices.manageInvoices')}
             </p>
           </div>
         </div>
@@ -257,14 +334,14 @@ export function InvoicesPage() {
         {/* Table */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-3">
-            <CardTitle className="whitespace-nowrap">Fatura Listesi</CardTitle>
+            <CardTitle className="whitespace-nowrap">{t('invoices.invoiceList')}</CardTitle>
             <div className="flex flex-1 min-w-0 items-center justify-end gap-2">
               <div className="relative w-full max-w-sm min-w-0">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Fatura, müşteri veya hizmet ara..."
+                  placeholder={t('invoices.searchPlaceholder')}
                   className="pl-9"
                 />
               </div>
@@ -291,7 +368,7 @@ export function InvoicesPage() {
                       size="sm"
                       onClick={() => setDateRange({ from: now, to: now })}
                     >
-                      Bugün
+                      {t('invoices.dateFilter.today')}
                     </Button>
                     <Button
                       type="button"
@@ -304,7 +381,7 @@ export function InvoicesPage() {
                         })
                       }
                     >
-                      Bu Hafta
+                      {t('invoices.dateFilter.thisWeek')}
                     </Button>
                     <Button
                       type="button"
@@ -312,7 +389,7 @@ export function InvoicesPage() {
                       size="sm"
                       onClick={() => setDateRange({ from: startOfMonth(now), to: endOfMonth(now) })}
                     >
-                      Bu Ay
+                      {t('invoices.dateFilter.thisMonth')}
                     </Button>
                     <Button
                       type="button"
@@ -323,7 +400,7 @@ export function InvoicesPage() {
                         setDateRange({ from: startOfMonth(prev), to: endOfMonth(prev) })
                       }}
                     >
-                      Geçen Ay
+                      {t('invoices.dateFilter.lastMonth')}
                     </Button>
                     <Button
                       type="button"
@@ -331,19 +408,21 @@ export function InvoicesPage() {
                       size="sm"
                       onClick={() => setDateRange({ from: startOfYear(now), to: endOfYear(now) })}
                     >
-                      Bu Yıl
+                      {t('invoices.dateFilter.thisYear')}
                     </Button>
                     <Button type="button" variant="ghost" size="sm" onClick={() => setDateRange(undefined)}>
-                      Temizle
+                      {t('invoices.dateFilter.clear')}
                     </Button>
                   </div>
 
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
-                      <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">Başlangıç</div>
+                      <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">
+                        {t('invoices.dateFilter.start')}
+                      </div>
                       <Calendar
                         selected={dateRange?.from}
-                        locale={tr}
+                        locale={dateLocale}
                         onSelect={(d) => {
                           if (!d) return
                           setDateRange((prev) => {
@@ -357,10 +436,12 @@ export function InvoicesPage() {
                       />
                     </div>
                     <div>
-                      <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">Bitiş</div>
+                      <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">
+                        {t('invoices.dateFilter.end')}
+                      </div>
                       <Calendar
                         selected={dateRange?.to}
-                        locale={tr}
+                        locale={dateLocale}
                         onSelect={(d) => {
                           if (!d) return
                           setDateRange((prev) => {
@@ -377,6 +458,18 @@ export function InvoicesPage() {
                 </PopoverContent>
               </Popover>
 
+              <Button
+                onClick={() => {
+                  if (!ensureCanEdit()) return
+                  setEditingInvoice(null)
+                  setOpen(true)
+                }}
+                disabled={!canEditInvoices}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                {t('invoices.newInvoice')}
+              </Button>
+
               <Sheet
                 open={open}
                 onOpenChange={(v) => {
@@ -384,19 +477,11 @@ export function InvoicesPage() {
                   if (!v) setEditingInvoice(null)
                 }}
               >
-                <SheetTrigger asChild>
-                  <Button
-                    onClick={() => {
-                      setEditingInvoice(null)
-                    }}
-                  >
-                    <Plus className="mr-2 h-4 w-4" />
-                    Yeni Fatura
-                  </Button>
-                </SheetTrigger>
                 <SheetContent side="right" className="w-full sm:w-[540px] lg:w-[800px] overflow-y-auto">
                   <SheetHeader>
-                    <SheetTitle>{editingInvoice ? 'Faturayı Düzenle' : 'Fatura Oluştur'}</SheetTitle>
+                    <SheetTitle>
+                      {editingInvoice ? t('invoices.editInvoice') : t('invoices.newInvoice')}
+                    </SheetTitle>
                   </SheetHeader>
                   <div className="px-6 pb-6">
                     <CreateInvoiceForm
@@ -405,7 +490,7 @@ export function InvoicesPage() {
                       onSuccess={() => {
                         setOpen(false)
                         toast({
-                          title: editingInvoice ? 'Fatura güncellendi' : 'Fatura oluşturuldu',
+                          title: editingInvoice ? t('invoices.invoiceUpdated') : t('invoices.invoiceCreated'),
                         })
                         setEditingInvoice(null)
                       }}
@@ -417,14 +502,18 @@ export function InvoicesPage() {
                       <div className="mt-8 rounded-lg border bg-white dark:bg-background p-5">
                         <div className="flex items-center justify-between gap-3">
                           <div>
-                            <div className="text-sm font-semibold">Ödemeler</div>
+                            <div className="text-sm font-semibold">{t('invoices.payments.title')}</div>
                             <div className="mt-1 text-xs text-muted-foreground">
-                              {formatCurrency(editingInvoiceTotals.paidAmount)} / {formatCurrency(editingInvoiceTotals.total)}
+                              {t('invoices.payments.progressLabel', {
+                                paid: formatCurrency(editingInvoiceTotals.paidAmount),
+                                total: formatCurrency(editingInvoiceTotals.total),
+                              })}
                             </div>
                           </div>
                           <Button
                             type="button"
                             onClick={() => {
+                              if (!ensureCanEdit()) return
                               setPaymentAmount('')
                               setPaymentNotes('')
                               setPaymentDate(format(new Date(), 'yyyy-MM-dd'))
@@ -433,7 +522,7 @@ export function InvoicesPage() {
                             }}
                             disabled={createPayment.isPending || !editingInvoice?.id}
                           >
-                            Ödeme Ekle
+                            {t('invoices.payments.add')}
                           </Button>
                         </div>
 
@@ -447,22 +536,30 @@ export function InvoicesPage() {
                         </div>
 
                         {paymentsQuery.isLoading ? (
-                          <div className="mt-4 text-sm text-muted-foreground">Yükleniyor...</div>
+                          <div className="mt-4 text-sm text-muted-foreground">{t('invoices.payments.loading')}</div>
                         ) : paymentsQuery.isError ? (
                           <div className="mt-4 text-sm text-destructive">
-                            {(paymentsQuery.error as any)?.message || 'Ödemeler yüklenemedi'}
+                            {(paymentsQuery.error as any)?.message || t('invoices.payments.error')}
                           </div>
                         ) : (paymentsQuery.data ?? []).length === 0 ? (
-                          <div className="mt-4 text-sm text-muted-foreground">Henüz ödeme eklenmedi.</div>
+                          <div className="mt-4 text-sm text-muted-foreground">{t('invoices.payments.empty')}</div>
                         ) : (
                           <div className="mt-4 overflow-hidden rounded-md border">
                             <table className="w-full">
                               <thead>
                                 <tr className="border-b bg-muted/50">
-                                  <th className="h-10 px-3 text-left align-middle text-xs font-medium text-muted-foreground">Tarih</th>
-                                  <th className="h-10 px-3 text-left align-middle text-xs font-medium text-muted-foreground">Yöntem</th>
-                                  <th className="h-10 px-3 text-right align-middle text-xs font-medium text-muted-foreground">Tutar</th>
-                                  <th className="h-10 px-3 text-right align-middle text-xs font-medium text-muted-foreground">İşlem</th>
+                                  <th className="h-10 px-3 text-left align-middle text-xs font-medium text-muted-foreground">
+                                    {t('invoices.payments.table.date')}
+                                  </th>
+                                  <th className="h-10 px-3 text-left align-middle text-xs font-medium text-muted-foreground">
+                                    {t('invoices.payments.table.method')}
+                                  </th>
+                                  <th className="h-10 px-3 text-right align-middle text-xs font-medium text-muted-foreground">
+                                    {t('invoices.payments.table.amount')}
+                                  </th>
+                                  <th className="h-10 px-3 text-right align-middle text-xs font-medium text-muted-foreground">
+                                    {t('invoices.payments.table.actions')}
+                                  </th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -476,18 +573,18 @@ export function InvoicesPage() {
                                         type="button"
                                         variant="ghost"
                                         size="sm"
-                                        disabled={deletePayment.isPending}
+                                        disabled={!canEditInvoices || deletePayment.isPending}
                                         onClick={async () => {
-                                          if (!editingInvoice?.id) return
+                                          if (!editingInvoice?.id || !ensureCanEdit()) return
                                           try {
                                             await deletePayment.mutateAsync({ id: p.id, invoice_id: editingInvoice.id })
-                                            toast({ title: 'Ödeme silindi' })
+                                            toast({ title: t('invoices.paymentDeleted') })
                                           } catch (e: any) {
-                                            toast({ title: 'Silinemedi', description: e?.message, variant: 'destructive' })
+                                            toast({ title: t('common.deleteFailed'), description: e?.message, variant: 'destructive' })
                                           }
                                         }}
                                       >
-                                        Sil
+                                        {t('invoices.actions.delete')}
                                       </Button>
                                     </td>
                                   </tr>
@@ -516,8 +613,12 @@ export function InvoicesPage() {
               }}
             >
               <TabsList className="mb-4">
-                <TabsTrigger value="unpaid">Ödenmemiş ({unpaidInvoices.length})</TabsTrigger>
-                <TabsTrigger value="paid">Ödenmiş ({paidInvoices.length})</TabsTrigger>
+                <TabsTrigger value="unpaid">
+                  {t('invoices.unpaid')} ({unpaidInvoices.length})
+                </TabsTrigger>
+                <TabsTrigger value="paid">
+                  {t('invoices.paid')} ({paidInvoices.length})
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="unpaid" className="mt-0">
@@ -529,27 +630,41 @@ export function InvoicesPage() {
                   </div>
                 ) : invoicesQuery.isError ? (
                   <p className="text-sm text-destructive">
-                    {(invoicesQuery.error as any)?.message || 'Faturalar yüklenemedi'}
+                    {(invoicesQuery.error as any)?.message || t('invoices.loadFailed')}
                   </p>
                 ) : (
                   <div className="rounded-md border">
                     <table className="w-full">
                       <thead>
                         <tr className="border-b bg-muted/50">
-                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Fatura No</th>
-                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Tarih</th>
-                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Müşteri</th>
-                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Hizmet/Ürün</th>
-                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Durum</th>
-                          <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">Toplam</th>
-                          <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">İşlem</th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                            {t('invoices.table.invoiceNo')}
+                          </th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                            {t('invoices.table.date')}
+                          </th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                            {t('invoices.table.customer')}
+                          </th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                            {t('invoices.table.serviceOrProduct')}
+                          </th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                            {t('invoices.table.status')}
+                          </th>
+                          <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
+                            {t('invoices.table.total')}
+                          </th>
+                          <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
+                            {t('invoices.table.actions')}
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
                         {unpaidInvoices.length === 0 ? (
                           <tr>
                             <td colSpan={7} className="h-32 text-center">
-                              <p className="text-sm text-muted-foreground">Ödenmemiş fatura bulunamadı.</p>
+                              <p className="text-sm text-muted-foreground">{t('invoices.noUnpaidInvoices')}</p>
                             </td>
                           </tr>
                         ) : (
@@ -562,9 +677,9 @@ export function InvoicesPage() {
                                 ? '-'
                                 : items.length === 1
                                   ? String(first)
-                                  : `${String(first)} (+${items.length - 1} kalem)`
+                                  : `${String(first)} (+${items.length - 1} ${t('invoices.items')})`
 
-                            const displayStatus = getInvoicePaymentStatus(inv)
+                            const displayStatus = getInvoicePaymentStatus(inv, t)
                             const badgeVariant =
                               displayStatus.key === 'draft' || displayStatus.key === 'cancelled'
                                 ? statusVariants[inv.status]
@@ -586,9 +701,7 @@ export function InvoicesPage() {
                                 </td>
                                 <td className="p-4">
                                   <Badge variant={badgeVariant} className={badgeClassName}>
-                                    {displayStatus.key === 'draft' || displayStatus.key === 'cancelled'
-                                      ? INVOICE_STATUS_LABELS[inv.status]
-                                      : displayStatus.label}
+                                    {displayStatus.label}
                                   </Badge>
                                 </td>
                                 <td className="p-4 text-right font-medium">{formatCurrency(Number(inv.total_amount))}</td>
@@ -598,7 +711,7 @@ export function InvoicesPage() {
                                       variant="outline"
                                       size="icon"
                                       onClick={() => setPrintingInvoice(inv)}
-                                      title="Yazdır"
+                                      title={t('invoices.actions.print')}
                                     >
                                       <Printer className="h-4 w-4" />
                                     </Button>
@@ -608,7 +721,7 @@ export function InvoicesPage() {
                                         <Button
                                           variant="outline"
                                           size="icon"
-                                          title={inv.token ? 'Paylaş' : 'Paylaşmak için token gerekli'}
+                                          title={inv.token ? t('invoices.actions.share') : t('invoices.shareTokenMissing')}
                                           disabled={!inv.token}
                                         >
                                           <Share2 className="h-4 w-4" />
@@ -628,18 +741,18 @@ export function InvoicesPage() {
                                                 if (!token) return
                                                 const fullUrl = `${window.location.origin}/p/invoice/${token}`
                                                 await navigator.clipboard.writeText(fullUrl)
-                                                toast({ title: 'Link kopyalandı' })
+                                                toast({ title: t('invoices.share.copySuccess') })
                                               } catch (e: any) {
                                                 toast({
-                                                  title: 'Kopyalama başarısız',
-                                                  description: e?.message || 'Bilinmeyen hata',
+                                                  title: t('invoices.share.copyFailed'),
+                                                  description: e?.message || t('common.errorOccurred'),
                                                   variant: 'destructive',
                                                 })
                                               }
                                             }}
                                           >
                                             <Copy className="h-4 w-4" />
-                                            Bağlantıyı Kopyala
+                                            {t('invoices.share.copyLink')}
                                           </DropdownMenu.Item>
 
                                           <DropdownMenu.Item
@@ -652,7 +765,7 @@ export function InvoicesPage() {
                                             }}
                                           >
                                             <ExternalLink className="h-4 w-4" />
-                                            Önizle / Yazdır
+                                            {t('invoices.share.preview')}
                                           </DropdownMenu.Item>
                                         </DropdownMenu.Content>
                                       </DropdownMenu.Portal>
@@ -661,16 +774,17 @@ export function InvoicesPage() {
                                     <Button
                                       variant="ghost"
                                       size="icon"
-                                      disabled={updateInvoiceStatus.isPending}
+                                      disabled={!canEditInvoices || updateInvoiceStatus.isPending}
                                       onClick={async () => {
+                                        if (!ensureCanEdit()) return
                                         try {
                                           await updateInvoiceStatus.mutateAsync({ id: inv.id, status: 'paid' })
-                                          toast({ title: 'Fatura ödendi olarak işaretlendi' })
+                                          toast({ title: t('invoices.notifications.markPaid') })
                                         } catch (e: any) {
-                                          toast({ title: 'Güncellenemedi', description: e?.message, variant: 'destructive' })
+                                          toast({ title: t('common.updateFailed'), description: e?.message, variant: 'destructive' })
                                         }
                                       }}
-                                      title="Ödendi Olarak İşaretle"
+                                      title={t('invoices.actions.markPaid')}
                                     >
                                       <CheckCircle2 className="h-4 w-4" />
                                     </Button>
@@ -678,11 +792,13 @@ export function InvoicesPage() {
                                     <Button
                                       variant="ghost"
                                       size="icon"
+                                      disabled={!canEditInvoices}
                                       onClick={() => {
+                                        if (!ensureCanEdit()) return
                                         setEditingInvoice(inv)
                                         setOpen(true)
                                       }}
-                                      title="Düzenle"
+                                      title={t('invoices.actions.edit')}
                                     >
                                       <Pencil className="h-4 w-4" />
                                     </Button>
@@ -690,12 +806,14 @@ export function InvoicesPage() {
                                       variant="ghost"
                                       size="icon"
                                       onClick={() => {
+                                        if (!ensureCanEdit()) return
                                         setSelectedInvoiceForPayment(inv)
                                         setQuickPaymentAmount('')
                                         setQuickPaymentDate(format(new Date(), 'yyyy-MM-dd'))
                                         setQuickPaymentMethod('Banka')
                                       }}
-                                      title="Hızlı Ödeme"
+                                      disabled={!canEditInvoices}
+                                      title={t('invoices.actions.quickPayment')}
                                     >
                                       <Wallet className="h-4 w-4" />
                                     </Button>
@@ -703,8 +821,12 @@ export function InvoicesPage() {
                                       variant="ghost"
                                       size="icon"
                                       className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                      onClick={() => setDeletingInvoice(inv)}
-                                      title="Sil"
+                                      disabled={!canEditInvoices}
+                                      onClick={() => {
+                                        if (!ensureCanEdit()) return
+                                        setDeletingInvoice(inv)
+                                      }}
+                                      title={t('invoices.actions.delete')}
                                     >
                                       <Trash2 className="h-4 w-4" />
                                     </Button>
@@ -729,27 +851,41 @@ export function InvoicesPage() {
                   </div>
                 ) : invoicesQuery.isError ? (
                   <p className="text-sm text-destructive">
-                    {(invoicesQuery.error as any)?.message || 'Faturalar yüklenemedi'}
+                    {(invoicesQuery.error as any)?.message || t('invoices.loadFailed')}
                   </p>
                 ) : (
                   <div className="rounded-md border">
                     <table className="w-full">
                       <thead>
                         <tr className="border-b bg-muted/50">
-                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Fatura No</th>
-                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Tarih</th>
-                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Müşteri</th>
-                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Hizmet/Ürün</th>
-                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Durum</th>
-                          <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">Toplam</th>
-                          <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">İşlem</th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                            {t('invoices.table.invoiceNo')}
+                          </th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                            {t('invoices.table.date')}
+                          </th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                            {t('invoices.table.customer')}
+                          </th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                            {t('invoices.table.serviceOrProduct')}
+                          </th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                            {t('invoices.table.status')}
+                          </th>
+                          <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
+                            {t('invoices.table.total')}
+                          </th>
+                          <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
+                            {t('invoices.table.actions')}
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
                         {paidInvoices.length === 0 ? (
                           <tr>
                             <td colSpan={7} className="h-32 text-center">
-                              <p className="text-sm text-muted-foreground">Ödenmiş fatura bulunamadı.</p>
+                              <p className="text-sm text-muted-foreground">{t('invoices.noPaidInvoices')}</p>
                             </td>
                           </tr>
                         ) : (
@@ -762,9 +898,9 @@ export function InvoicesPage() {
                                 ? '-'
                                 : items.length === 1
                                   ? String(first)
-                                  : `${String(first)} (+${items.length - 1} kalem)`
+                                  : `${String(first)} (+${items.length - 1} ${t('invoices.items')})`
 
-                            const displayStatus = getInvoicePaymentStatus(inv)
+                            const displayStatus = getInvoicePaymentStatus(inv, t)
                             const badgeVariant =
                               displayStatus.key === 'draft' || displayStatus.key === 'cancelled'
                                 ? statusVariants[inv.status]
@@ -786,9 +922,7 @@ export function InvoicesPage() {
                                 </td>
                                 <td className="p-4">
                                   <Badge variant={badgeVariant} className={badgeClassName}>
-                                    {displayStatus.key === 'draft' || displayStatus.key === 'cancelled'
-                                      ? INVOICE_STATUS_LABELS[inv.status]
-                                      : displayStatus.label}
+                                    {displayStatus.label}
                                   </Badge>
                                 </td>
                                 <td className="p-4 text-right font-medium">{formatCurrency(Number(inv.total_amount))}</td>
@@ -798,7 +932,7 @@ export function InvoicesPage() {
                                       variant="outline"
                                       size="icon"
                                       onClick={() => setPrintingInvoice(inv)}
-                                      title="Yazdır"
+                                      title={t('invoices.actions.print')}
                                     >
                                       <Printer className="h-4 w-4" />
                                     </Button>
@@ -806,16 +940,17 @@ export function InvoicesPage() {
                                     <Button
                                       variant="ghost"
                                       size="icon"
-                                      disabled={updateInvoiceStatus.isPending}
+                                      disabled={!canEditInvoices || updateInvoiceStatus.isPending}
                                       onClick={async () => {
+                                        if (!ensureCanEdit()) return
                                         try {
                                           await updateInvoiceStatus.mutateAsync({ id: inv.id, status: 'pending' })
-                                          toast({ title: 'Fatura ödenmedi olarak işaretlendi' })
+                                          toast({ title: t('invoices.notifications.markUnpaid') })
                                         } catch (e: any) {
-                                          toast({ title: 'Güncellenemedi', description: e?.message, variant: 'destructive' })
+                                          toast({ title: t('common.updateFailed'), description: e?.message, variant: 'destructive' })
                                         }
                                       }}
-                                      title="Ödenmedi Olarak İşaretle"
+                                      title={t('invoices.actions.markUnpaid')}
                                     >
                                       <RotateCcw className="h-4 w-4" />
                                     </Button>
@@ -823,11 +958,13 @@ export function InvoicesPage() {
                                     <Button
                                       variant="ghost"
                                       size="icon"
+                                      disabled={!canEditInvoices}
                                       onClick={() => {
+                                        if (!ensureCanEdit()) return
                                         setEditingInvoice(inv)
                                         setOpen(true)
                                       }}
-                                      title="Düzenle"
+                                      title={t('invoices.actions.edit')}
                                     >
                                       <Pencil className="h-4 w-4" />
                                     </Button>
@@ -835,8 +972,12 @@ export function InvoicesPage() {
                                       variant="ghost"
                                       size="icon"
                                       className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                      onClick={() => setDeletingInvoice(inv)}
-                                      title="Sil"
+                                      disabled={!canEditInvoices}
+                                      onClick={() => {
+                                        if (!ensureCanEdit()) return
+                                        setDeletingInvoice(inv)
+                                      }}
+                                      title={t('invoices.actions.delete')}
                                     >
                                       <Trash2 className="h-4 w-4" />
                                     </Button>
@@ -863,14 +1004,12 @@ export function InvoicesPage() {
         >
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Silme Onayı</AlertDialogTitle>
-              <AlertDialogDescription>
-                Bu kaydı silmek istediğinize emin misiniz? Bu işlem geri alınamaz.
-              </AlertDialogDescription>
+              <AlertDialogTitle>{t('invoices.deleteConfirm')}</AlertDialogTitle>
+              <AlertDialogDescription>{t('invoices.deleteWarning')}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <Button variant="outline" onClick={() => setDeletingInvoice(null)}>
-                Vazgeç
+                {t('common.cancel')}
               </Button>
               <Button
                 variant="destructive"
@@ -882,10 +1021,10 @@ export function InvoicesPage() {
                       id: deletingInvoice.id,
                       itemName: deletingInvoice.invoice_number,
                     })
-                    toast({ title: 'Fatura silindi' })
+                    toast({ title: t('invoices.invoiceDeleted') })
                   } catch (e: any) {
                     toast({
-                      title: 'Silme işlemi başarısız',
+                      title: t('common.deleteFailed'),
                       description: e?.message,
                       variant: 'destructive',
                     })
@@ -894,7 +1033,7 @@ export function InvoicesPage() {
                   }
                 }}
               >
-                Sil
+                {t('common.delete')}
               </Button>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -910,12 +1049,15 @@ export function InvoicesPage() {
         <DialogContent className="sm:max-w-[640px]">
           <DialogHeader>
             <DialogTitle>
-              Hızlı Ödeme • {selectedInvoiceForPayment?.invoice_number}
               {selectedInvoiceForPayment
-                ? ` • ${(selectedInvoiceForPayment as any)?.customer?.name ??
-                    customersById.get(selectedInvoiceForPayment.customer_id)?.name ??
-                    '-'}`
-                : ''}
+                ? t('invoices.quickPayment.titleWithContext', {
+                    invoice: selectedInvoiceForPayment.invoice_number,
+                    customer:
+                      (selectedInvoiceForPayment as any)?.customer?.name ??
+                      customersById.get(selectedInvoiceForPayment.customer_id)?.name ??
+                      '-',
+                  })
+                : t('invoices.quickPayment.title')}
             </DialogTitle>
           </DialogHeader>
 
@@ -923,15 +1065,15 @@ export function InvoicesPage() {
             <div className="rounded-lg border bg-white dark:bg-background p-4">
               <div className="grid grid-cols-3 gap-3 text-sm">
                 <div>
-                  <div className="text-xs text-muted-foreground">Toplam</div>
+                  <div className="text-xs text-muted-foreground">{t('invoices.quickPayment.total')}</div>
                   <div className="mt-1 font-semibold tabular-nums">{formatCurrency(quickInvoiceTotals.total)}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-muted-foreground">Ödenen</div>
+                  <div className="text-xs text-muted-foreground">{t('invoices.quickPayment.paid')}</div>
                   <div className="mt-1 font-semibold tabular-nums">{formatCurrency(quickInvoiceTotals.paidAmount)}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-muted-foreground">Kalan</div>
+                  <div className="text-xs text-muted-foreground">{t('invoices.quickPayment.remaining')}</div>
                   <div className="mt-1 font-semibold tabular-nums">{formatCurrency(quickInvoiceTotals.remaining)}</div>
                 </div>
               </div>
@@ -947,11 +1089,13 @@ export function InvoicesPage() {
             </div>
 
             <div className="grid gap-3 rounded-lg border p-4">
-              <div className="text-sm font-semibold">Ödeme Ekle</div>
+              <div className="text-sm font-semibold">{t('invoices.payments.add')}</div>
 
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="grid gap-2">
-                  <div className="text-xs font-medium text-muted-foreground">Tutar (₺)</div>
+                  <div className="text-xs font-medium text-muted-foreground">
+                    {t('invoices.quickPayment.amountLabel', { currency: currencySymbol })}
+                  </div>
                   <Input
                     type="number"
                     step="0.01"
@@ -962,21 +1106,21 @@ export function InvoicesPage() {
                 </div>
 
                 <div className="grid gap-2">
-                  <div className="text-xs font-medium text-muted-foreground">Tarih</div>
+                  <div className="text-xs font-medium text-muted-foreground">{t('invoices.quickPayment.dateLabel')}</div>
                   <Input type="date" value={quickPaymentDate} onChange={(e) => setQuickPaymentDate(e.target.value)} />
                 </div>
 
                 <div className="grid gap-2">
-                  <div className="text-xs font-medium text-muted-foreground">Yöntem</div>
+                  <div className="text-xs font-medium text-muted-foreground">{t('invoices.quickPayment.methodLabel')}</div>
                   <Select value={quickPaymentMethod} onValueChange={setQuickPaymentMethod}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Seçiniz" />
+                      <SelectValue placeholder={t('common.selectPlaceholder')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Banka">Banka</SelectItem>
-                      <SelectItem value="Nakit">Nakit</SelectItem>
-                      <SelectItem value="Kredi Kartı">Kredi Kartı</SelectItem>
-                      <SelectItem value="Diğer">Diğer</SelectItem>
+                      <SelectItem value="Banka">{t('invoices.bank')}</SelectItem>
+                      <SelectItem value="Nakit">{t('invoices.cash')}</SelectItem>
+                      <SelectItem value="Kredi Kartı">{t('invoices.creditCard')}</SelectItem>
+                      <SelectItem value="Diğer">{t('invoices.other')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -991,8 +1135,8 @@ export function InvoicesPage() {
                     const amount = Number(quickPaymentAmount)
                     if (!amount || amount <= 0) {
                       toast({
-                        title: 'Geçersiz tutar',
-                        description: 'Lütfen geçerli bir ödeme tutarı girin.',
+                        title: t('invoices.quickPayment.invalidAmount'),
+                        description: t('invoices.quickPayment.invalidAmountDescription'),
                         variant: 'destructive',
                       })
                       return
@@ -1005,46 +1149,56 @@ export function InvoicesPage() {
                         payment_date: quickPaymentDate,
                         payment_method: quickPaymentMethod || null,
                       })
-                      toast({ title: 'Ödeme eklendi' })
+                      toast({ title: t('invoices.paymentAdded') })
                       setSelectedInvoiceForPayment(null)
                     } catch (e: any) {
-                      toast({ title: 'Ödeme eklenemedi', description: e?.message, variant: 'destructive' })
+                      toast({ title: t('invoices.paymentAddFailed'), description: e?.message, variant: 'destructive' })
                     }
                   }}
                 >
-                  Kaydet
+                  {t('common.save')}
                 </Button>
               </div>
             </div>
 
             <div className="rounded-lg border p-4">
-              <div className="text-sm font-semibold">Ödeme Geçmişi</div>
+              <div className="text-sm font-semibold">{t('invoices.quickPayment.history')}</div>
 
               {quickPaymentsQuery.isLoading ? (
-                <div className="mt-3 text-sm text-muted-foreground">Yükleniyor...</div>
+                <div className="mt-3 text-sm text-muted-foreground">{t('common.loading')}</div>
               ) : quickPaymentsQuery.isError ? (
                 <div className="mt-3 text-sm text-destructive">
-                  {(quickPaymentsQuery.error as any)?.message || 'Ödemeler yüklenemedi'}
+                  {(quickPaymentsQuery.error as any)?.message || t('invoices.payments.error')}
                 </div>
               ) : (quickPaymentsQuery.data ?? []).length === 0 ? (
-                <div className="mt-3 text-sm text-muted-foreground">Henüz ödeme yok.</div>
+                <div className="mt-3 text-sm text-muted-foreground">{t('invoices.quickPayment.historyEmpty')}</div>
               ) : (
                 <div className="mt-3 overflow-hidden rounded-md border">
                   <table className="w-full">
                     <thead>
                       <tr className="border-b bg-muted/50">
-                        <th className="h-9 px-3 text-left align-middle text-xs font-medium text-muted-foreground">Tarih</th>
-                        <th className="h-9 px-3 text-left align-middle text-xs font-medium text-muted-foreground">Yöntem</th>
-                        <th className="h-9 px-3 text-right align-middle text-xs font-medium text-muted-foreground">Tutar</th>
-                        <th className="h-9 px-3 text-right align-middle text-xs font-medium text-muted-foreground"> </th>
+                        <th className="h-9 px-3 text-left align-middle text-xs font-medium text-muted-foreground">
+                          {t('invoices.payments.table.date')}
+                        </th>
+                        <th className="h-9 px-3 text-left align-middle text-xs font-medium text-muted-foreground">
+                          {t('invoices.payments.table.method')}
+                        </th>
+                        <th className="h-9 px-3 text-right align-middle text-xs font-medium text-muted-foreground">
+                          {t('invoices.payments.table.amount')}
+                        </th>
+                        <th className="h-9 px-3 text-right align-middle text-xs font-medium text-muted-foreground">
+                          {t('invoices.payments.table.actions')}
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {(quickPaymentsQuery.data ?? []).map((p) => (
                         <tr key={p.id} className="border-b last:border-b-0">
                           <td className="p-3 text-sm">{formatShortDate(p.payment_date)}</td>
-                          <td className="p-3 text-sm">{p.payment_method || '-'}</td>
-                          <td className="p-3 text-right text-sm tabular-nums font-medium">{formatCurrency(Number(p.amount ?? 0))}</td>
+                          <td className="p-3 text-sm">{getPaymentMethodLabel(p.payment_method)}</td>
+                          <td className="p-3 text-right text-sm tabular-nums font-medium">
+                            {formatCurrency(Number(p.amount ?? 0))}
+                          </td>
                           <td className="p-2 text-right">
                             <Button
                               type="button"
@@ -1055,13 +1209,17 @@ export function InvoicesPage() {
                                 if (!selectedInvoiceForPayment?.id) return
                                 try {
                                   await deletePayment.mutateAsync({ id: p.id, invoice_id: selectedInvoiceForPayment.id })
-                                  toast({ title: 'Ödeme silindi' })
+                                  toast({ title: t('invoices.paymentDeleted') })
                                 } catch (e: any) {
-                                  toast({ title: 'Silinemedi', description: e?.message, variant: 'destructive' })
+                                  toast({
+                                    title: t('invoices.paymentDeleteFailed'),
+                                    description: e?.message,
+                                    variant: 'destructive',
+                                  })
                                 }
                               }}
                             >
-                              Sil
+                              {t('common.delete')}
                             </Button>
                           </td>
                         </tr>
@@ -1075,7 +1233,7 @@ export function InvoicesPage() {
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setSelectedInvoiceForPayment(null)}>
-              Kapat
+              {t('common.close')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1089,7 +1247,7 @@ export function InvoicesPage() {
       >
         <DialogContent className="max-w-[980px] p-0">
           <DialogHeader className="px-6 pt-6">
-            <DialogTitle>Fatura Önizleme</DialogTitle>
+            <DialogTitle>{t('invoices.printDialog.title')}</DialogTitle>
           </DialogHeader>
 
           <div className="max-h-[80vh] overflow-y-auto">
@@ -1104,7 +1262,7 @@ export function InvoicesPage() {
               }}
               disabled={!printingInvoice}
             >
-              Yazdır / PDF İndir
+              {t('invoices.printDialog.button')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1118,12 +1276,14 @@ export function InvoicesPage() {
       >
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
-            <DialogTitle>Ödeme Ekle</DialogTitle>
+            <DialogTitle>{t('invoices.paymentDialog.title')}</DialogTitle>
           </DialogHeader>
 
           <div className="grid gap-4">
             <div className="grid gap-2">
-              <div className="text-sm font-medium">Tutar (₺)</div>
+              <div className="text-sm font-medium">
+                {t('invoices.paymentDialog.amountLabel', { currency: currencySymbol })}
+              </div>
               <Input
                 type="number"
                 step="0.01"
@@ -1134,28 +1294,32 @@ export function InvoicesPage() {
             </div>
 
             <div className="grid gap-2">
-              <div className="text-sm font-medium">Tarih</div>
+              <div className="text-sm font-medium">{t('invoices.paymentDialog.dateLabel')}</div>
               <Input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} />
             </div>
 
             <div className="grid gap-2">
-              <div className="text-sm font-medium">Ödeme Yöntemi</div>
+              <div className="text-sm font-medium">{t('invoices.paymentDialog.methodLabel')}</div>
               <Select value={paymentMethod} onValueChange={setPaymentMethod}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Seçiniz" />
+                  <SelectValue placeholder={t('common.selectPlaceholder')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Banka">Banka</SelectItem>
-                  <SelectItem value="Nakit">Nakit</SelectItem>
-                  <SelectItem value="Kredi Kartı">Kredi Kartı</SelectItem>
-                  <SelectItem value="Diğer">Diğer</SelectItem>
+                  <SelectItem value="Banka">{t('invoices.bank')}</SelectItem>
+                  <SelectItem value="Nakit">{t('invoices.cash')}</SelectItem>
+                  <SelectItem value="Kredi Kartı">{t('invoices.creditCard')}</SelectItem>
+                  <SelectItem value="Diğer">{t('invoices.other')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div className="grid gap-2">
-              <div className="text-sm font-medium">Not</div>
-              <Textarea value={paymentNotes} onChange={(e) => setPaymentNotes(e.target.value)} placeholder="İsteğe bağlı" />
+              <div className="text-sm font-medium">{t('invoices.paymentDialog.notesLabel')}</div>
+              <Textarea
+                value={paymentNotes}
+                onChange={(e) => setPaymentNotes(e.target.value)}
+                placeholder={t('invoices.paymentDialog.notesPlaceholder')}
+              />
             </div>
           </div>
 
@@ -1166,7 +1330,7 @@ export function InvoicesPage() {
               onClick={() => setPaymentDialogOpen(false)}
               disabled={createPayment.isPending}
             >
-              Vazgeç
+              {t('common.cancel')}
             </Button>
             <Button
               type="button"
@@ -1175,7 +1339,11 @@ export function InvoicesPage() {
                 if (!editingInvoice?.id) return
                 const amount = Number(paymentAmount)
                 if (!amount || amount <= 0) {
-                  toast({ title: 'Geçersiz tutar', description: 'Lütfen geçerli bir ödeme tutarı girin.', variant: 'destructive' })
+                  toast({
+                    title: t('invoices.quickPayment.invalidAmount'),
+                    description: t('invoices.quickPayment.invalidAmountDescription'),
+                    variant: 'destructive',
+                  })
                   return
                 }
 
@@ -1187,14 +1355,14 @@ export function InvoicesPage() {
                     payment_method: paymentMethod || null,
                     notes: paymentNotes.trim() || null,
                   })
-                  toast({ title: 'Ödeme eklendi' })
+                  toast({ title: t('invoices.paymentAdded') })
                   setPaymentDialogOpen(false)
                 } catch (e: any) {
-                  toast({ title: 'Ödeme eklenemedi', description: e?.message, variant: 'destructive' })
+                  toast({ title: t('invoices.paymentAddFailed'), description: e?.message, variant: 'destructive' })
                 }
               }}
             >
-              Kaydet
+              {t('common.save')}
             </Button>
           </DialogFooter>
         </DialogContent>

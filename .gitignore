@@ -24,5 +24,21 @@ dist-ssr
 *.sln
 *.sw?
 
- # Supabase temp artifacts
+# Supabase temp artifacts
 supabase/.temp/
+
+# Development and debug files
+debug-auth.html
+test-edge-function.html
+*.test.html
+*.debug.html
+
+# Temporary SQL files
+COPY_THIS_SQL.txt
+FINAL_FIX.sql
+URGENT_FIX.sql
+
+# Temporary documentation
+RUN_THIS_NOW.md
+FIX_RLS_INSTRUCTIONS.md
+PHASE1-COMPLETE.md

@@ -15,7 +15,6 @@ import { cn } from '../lib/utils'
 import { formatCurrency, formatShortDate } from '../lib/format'
 import { INVOICE_STATUS_LABELS } from '../lib/constants'
 import {
-  type CustomerTransactionType,
   useCustomer,
   useCustomerActivities,
   useCustomerDeals,
@@ -52,6 +51,9 @@ import { toast } from '../components/ui/use-toast'
 import { format, formatDistanceToNow } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { Building2, Mail, Phone, User, ArrowLeft, FileText, Receipt, Kanban, Calendar, Plus, Pencil, Trash2, File, FileImage, Download } from 'lucide-react'
+import { usePermissions } from '../contexts/PermissionsContext'
+
+type CustomerTransactionType = 'debt' | 'credit'
 
 const invoiceStatusVariants: Record<string, 'secondary' | 'default' | 'destructive'> = {
   draft: 'secondary',
@@ -179,6 +181,8 @@ export function CustomerDetail() {
   const navigate = useNavigate()
   const { id } = useParams()
   const customerId = id ?? null
+  const { canEditModule } = usePermissions()
+  const canEditCustomers = canEditModule('customers')
 
   const customerQuery = useCustomer(customerId)
   const invoicesQuery = useCustomerInvoices(customerId)
@@ -253,20 +257,21 @@ export function CustomerDetail() {
     if (!customerId || !content) return
 
     try {
-      await createNote.mutateAsync({ customer_id: customerId, content })
+      await createNote.mutateAsync({ customer_id: customerId, content, user_id: '' })
       setNewNote('')
       toast({ title: 'Not eklendi' })
-    } catch (e: any) {
-      toast({ title: 'Not eklenemedi', description: e?.message, variant: 'destructive' })
+    } catch (e) {
+      toast({ title: 'Not eklenemedi', description: e instanceof Error ? e.message : 'Hata', variant: 'destructive' })
     }
   }
 
   const handleDeleteNote = async (noteId: string) => {
+    if (!customerId) return
     try {
-      await deleteNote.mutateAsync({ id: noteId })
+      await deleteNote.mutateAsync({ id: noteId, customer_id: customerId })
       toast({ title: 'Not silindi' })
-    } catch (e: any) {
-      toast({ title: 'Silinemedi', description: e?.message, variant: 'destructive' })
+    } catch (e) {
+      toast({ title: 'Silinemedi', description: e instanceof Error ? e.message : 'Hata', variant: 'destructive' })
     }
   }
 
@@ -286,11 +291,11 @@ export function CustomerDetail() {
     if (!id || !content) return
 
     try {
-      await updateNote.mutateAsync({ id, content })
+      await updateNote.mutateAsync({ id, patch: { content } })
       toast({ title: 'Not güncellendi' })
       handleCancelEditNote()
-    } catch (e: any) {
-      toast({ title: 'Güncellenemedi', description: e?.message, variant: 'destructive' })
+    } catch (e) {
+      toast({ title: 'Güncellenemedi', description: e instanceof Error ? e.message : 'Hata', variant: 'destructive' })
     }
   }
 
@@ -553,7 +558,7 @@ export function CustomerDetail() {
                   }}
                 >
                   <DialogTrigger asChild>
-                    <Button type="button" className="gap-2" disabled={!customerId}>
+                    <Button type="button" className="gap-2" disabled={!customerId || !canEditCustomers}>
                       <Plus className="h-4 w-4" />
                       İşlem Ekle
                     </Button>
@@ -692,6 +697,7 @@ export function CustomerDetail() {
                                     variant="outline"
                                     size="sm"
                                     onClick={() => handleStartEditTransaction(t)}
+                                    disabled={!canEditCustomers}
                                   >
                                     <Pencil className="mr-2 h-4 w-4" />
                                     Düzenle
@@ -704,6 +710,7 @@ export function CustomerDetail() {
                                       setDeletingTransaction(t)
                                       setDeleteTransactionOpen(true)
                                     }}
+                                    disabled={!canEditCustomers}
                                   >
                                     <Trash2 className="mr-2 h-4 w-4" />
                                     Sil
@@ -1066,6 +1073,7 @@ export function CustomerDetail() {
                   size="sm"
                   className="gap-2"
                   onClick={() => setAddActivityOpen(true)}
+                  disabled={!canEditCustomers}
                 >
                   <Plus className="h-4 w-4" />
                   Yeni Aktivite Ekle
@@ -1130,6 +1138,7 @@ export function CustomerDetail() {
                                   onCheckedChange={(v: boolean | 'indeterminate') =>
                                     toggleActivityCompleted.mutate({ id: a.id, is_completed: Boolean(v) })
                                   }
+                                  disabled={!canEditCustomers}
                                 />
                               </td>
                               <td className={cn('p-4 font-medium', a.is_completed && 'line-through text-muted-foreground')}>
@@ -1149,13 +1158,14 @@ export function CustomerDetail() {
                                       setEditingActivityId(a.id)
                                       setEditActivityOpen(true)
                                     }}
+                                    disabled={!canEditCustomers}
                                   >
                                     <Pencil className="h-4 w-4" />
                                   </Button>
 
                                   <AlertDialog>
                                     <AlertDialogTrigger asChild>
-                                      <Button type="button" variant="outline" size="icon">
+                                      <Button type="button" variant="outline" size="icon" disabled={!canEditCustomers}>
                                         <Trash2 className="h-4 w-4" />
                                       </Button>
                                     </AlertDialogTrigger>
@@ -1195,12 +1205,13 @@ export function CustomerDetail() {
                     onChange={(e) => setNewNote(e.target.value)}
                     placeholder="Not yaz..."
                     className="bg-background"
+                    disabled={!canEditCustomers}
                   />
                   <div className="flex justify-end">
                     <Button
                       type="button"
                       onClick={() => void handleAddNote()}
-                      disabled={!customerId || createNote.isPending || newNote.trim().length === 0}
+                      disabled={!customerId || !canEditCustomers || createNote.isPending || newNote.trim().length === 0}
                     >
                       {createNote.isPending ? 'Ekleniyor...' : 'Not Ekle'}
                     </Button>
@@ -1261,7 +1272,7 @@ export function CustomerDetail() {
                                 type="button"
                                 variant="outline"
                                 size="icon"
-                                disabled={Boolean(editingNoteId) || deleteNote.isPending}
+                                disabled={!canEditCustomers || Boolean(editingNoteId) || deleteNote.isPending}
                                 onClick={() => handleStartEditNote(n.id, n.content)}
                               >
                                 <Pencil className="h-4 w-4" />
@@ -1269,7 +1280,7 @@ export function CustomerDetail() {
 
                               <AlertDialog>
                                 <AlertDialogTrigger asChild>
-                                  <Button type="button" variant="outline" size="icon" disabled={deleteNote.isPending}>
+                                  <Button type="button" variant="outline" size="icon" disabled={!canEditCustomers || deleteNote.isPending}>
                                     <Trash2 className="h-4 w-4" />
                                   </Button>
                                 </AlertDialogTrigger>
@@ -1316,7 +1327,7 @@ export function CustomerDetail() {
                   <Button
                     type="button"
                     variant="outline"
-                    disabled={!customerId || uploadFile.isPending || uploadingFilesCount > 0}
+                    disabled={!customerId || !canEditCustomers || uploadFile.isPending || uploadingFilesCount > 0}
                     onClick={() => fileInputRef.current?.click()}
                   >
                     {uploadFile.isPending || uploadingFilesCount > 0 ? 'Yükleniyor...' : 'Dosya Seç'}
@@ -1330,7 +1341,7 @@ export function CustomerDetail() {
                   className={cn(
                     'mb-4 rounded-lg border border-dashed p-4 transition-colors bg-card',
                     isDraggingFile ? 'border-primary/60 bg-muted/40' : 'border-border',
-                    (!customerId || uploadFile.isPending || uploadingFilesCount > 0) && 'opacity-60 pointer-events-none'
+                    (!customerId || !canEditCustomers || uploadFile.isPending || uploadingFilesCount > 0) && 'opacity-60 pointer-events-none'
                   )}
                   onClick={() => fileInputRef.current?.click()}
                   onKeyDown={(e) => {
@@ -1384,11 +1395,11 @@ export function CustomerDetail() {
                 ) : (
                   <div className="space-y-3">
                     {(filesQuery.data ?? []).map((a) => {
-                      const fileName = String(a.name)
+                      const fileName = String(a.file_name ?? 'Dosya')
                       const lower = fileName.toLowerCase()
                       const isImage = lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.gif') || lower.endsWith('.webp')
                       const isPdf = lower.endsWith('.pdf')
-                      const href = a.signed_url ?? undefined
+                      const href = a.file_url ?? undefined
                       const icon = isImage ? (
                         <FileImage className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
                       ) : isPdf ? (
@@ -1401,7 +1412,7 @@ export function CustomerDetail() {
                       const sizeLabel = sizeBytes > 0 ? `${Math.round(sizeBytes / 1024)} KB` : '-'
 
                       return (
-                        <div key={a.path} className="flex items-center justify-between gap-3 rounded-lg border bg-card p-3">
+                        <div key={a.id} className="flex items-center justify-between gap-3 rounded-lg border bg-card p-3">
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="h-10 w-10 shrink-0 overflow-hidden rounded-md border bg-muted flex items-center justify-center">
                               {isImage && href ? (
@@ -1444,7 +1455,7 @@ export function CustomerDetail() {
 
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
-                                <Button type="button" variant="outline" size="icon" disabled={deleteFile.isPending}>
+                                <Button type="button" variant="outline" size="icon" disabled={!canEditCustomers || deleteFile.isPending}>
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               </AlertDialogTrigger>
@@ -1455,7 +1466,7 @@ export function CustomerDetail() {
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
                                   <AlertDialogCancel>İptal</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => void handleDeleteFile({ path: a.path })}>
+                                  <AlertDialogAction onClick={() => void handleDeleteFile({ path: a.file_url })}>
                                     Sil
                                   </AlertDialogAction>
                                 </AlertDialogFooter>

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Controller, useForm } from 'react-hook-form'
 import { format } from 'date-fns'
+import { useTranslation } from 'react-i18next'
 
 import { useAuth } from '../../contexts/AuthContext'
 import {
@@ -17,27 +18,22 @@ import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Label } from '../ui/label'
 import { Textarea } from '../ui/textarea'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
 import type { Database } from '../../types/database'
 
-const transactionSchema = z.object({
-  type: z.enum(['income', 'expense']),
-  amount: z.number().positive('Tutar 0’dan büyük olmalı'),
-  date: z.date(),
-  accountId: z.string().min(1, 'Hesap seçimi zorunludur'),
-  category: z.string().min(1, 'Kategori zorunludur'),
-  payee: z.string().optional(),
-  customerId: z.string().optional(),
-  description: z.string().optional(),
-})
+const createTransactionSchema = (t: (key: string) => string) =>
+  z.object({
+    type: z.enum(['income', 'expense']),
+    amount: z.number().positive(t('finance.form.validation.amountPositive')),
+    date: z.date(),
+    accountId: z.string().min(1, t('finance.form.validation.accountRequired')),
+    category: z.string().min(1, t('finance.form.validation.categoryRequired')),
+    payee: z.string().optional(),
+    customerId: z.string().optional(),
+    description: z.string().optional(),
+  })
 
-type TransactionFormValues = z.infer<typeof transactionSchema>
+type TransactionFormValues = z.infer<ReturnType<typeof createTransactionSchema>>
 
 type TransactionFormProps = {
   initialTransaction?: Database['public']['Tables']['transactions']['Row']
@@ -45,10 +41,13 @@ type TransactionFormProps = {
 }
 
 export function TransactionForm({ initialTransaction, onSuccess }: TransactionFormProps) {
+  const { t } = useTranslation()
   const { user } = useAuth()
   const createTransaction = useCreateTransaction()
   const updateTransaction = useUpdateTransaction()
   const customersQuery = useCustomers()
+
+  const transactionSchema = useMemo(() => createTransactionSchema(t), [t])
 
   const isEditing = Boolean(initialTransaction?.id)
 
@@ -162,7 +161,7 @@ export function TransactionForm({ initialTransaction, onSuccess }: TransactionFo
             }
           }}
         >
-          Gelir
+          {t('finance.form.income')}
         </Button>
         <Button
           type="button"
@@ -176,13 +175,13 @@ export function TransactionForm({ initialTransaction, onSuccess }: TransactionFo
             }
           }}
         >
-          Gider
+          {t('finance.form.expense')}
         </Button>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="amount">Tutar</Label>
+          <Label htmlFor="amount">{t('finance.form.amount')}</Label>
           <Input
             id="amount"
             type="number"
@@ -200,7 +199,7 @@ export function TransactionForm({ initialTransaction, onSuccess }: TransactionFo
           name="date"
           render={({ field }) => (
             <UnifiedDatePicker
-              label="Tarih"
+              label={t('finance.form.date')}
               value={field.value}
               onChange={(d) => field.onChange(d ?? new Date())}
             />
@@ -213,7 +212,7 @@ export function TransactionForm({ initialTransaction, onSuccess }: TransactionFo
         name="accountId"
         render={({ field }) => (
           <AccountSelector
-            label="Hesap"
+            label={t('finance.form.account')}
             value={field.value}
             onChange={field.onChange}
           />
@@ -225,19 +224,19 @@ export function TransactionForm({ initialTransaction, onSuccess }: TransactionFo
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
-          <Label>Kategori</Label>
+          <Label>{t('finance.form.category')}</Label>
           <Controller
             control={control}
             name="category"
             render={({ field }) => (
               <Select value={field.value || undefined} onValueChange={field.onChange}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Kategori seç" />
+                  <SelectValue placeholder={t('finance.form.categoryPlaceholder')} />
                 </SelectTrigger>
                 <SelectContent>
                   {categories.length === 0 ? (
                     <SelectItem value="__none__" disabled>
-                      Ayarlar'dan kategori ekleyin
+                      {t('finance.form.categoryEmpty')}
                     </SelectItem>
                   ) : (
                     categories.map((c) => (
@@ -256,7 +255,7 @@ export function TransactionForm({ initialTransaction, onSuccess }: TransactionFo
         </div>
 
         <div className="space-y-2">
-          <Label>Müşteri (Opsiyonel)</Label>
+          <Label>{t('finance.form.customerOptional')}</Label>
           <Controller
             control={control}
             name="customerId"
@@ -266,10 +265,10 @@ export function TransactionForm({ initialTransaction, onSuccess }: TransactionFo
                 onValueChange={(v) => field.onChange(v === '__none__' ? undefined : v)}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Seçiniz" />
+                  <SelectValue placeholder={t('finance.form.customerPlaceholder')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__none__">Yok</SelectItem>
+                  <SelectItem value="__none__">{t('finance.form.none')}</SelectItem>
                   {(customersQuery.data ?? []).map((c) => (
                     <SelectItem key={c.id} value={c.id}>
                       {c.name}
@@ -284,25 +283,25 @@ export function TransactionForm({ initialTransaction, onSuccess }: TransactionFo
 
       {type === 'expense' ? (
         <div className="space-y-2">
-          <Label htmlFor="payee">Ödenen Kişi/Firma</Label>
-          <Input id="payee" placeholder="Örn: Lila Kafe" {...register('payee')} />
+          <Label htmlFor="payee">{t('finance.form.payee')}</Label>
+          <Input id="payee" placeholder={t('finance.form.payeePlaceholder')} {...register('payee')} />
         </div>
       ) : null}
 
       <div className="space-y-2">
-        <Label htmlFor="description">Açıklama</Label>
-        <Textarea id="description" placeholder="Not ekleyin..." {...register('description')} />
+        <Label htmlFor="description">{t('finance.form.description')}</Label>
+        <Textarea id="description" placeholder={t('finance.form.descriptionPlaceholder')} {...register('description')} />
       </div>
 
       {createTransaction.error && (
         <p className="text-sm text-destructive">
-          {(createTransaction.error as any)?.message || 'İşlem oluşturulamadı'}
+          {(createTransaction.error as any)?.message || t('finance.form.createFailed')}
         </p>
       )}
 
       {updateTransaction.error && (
         <p className="text-sm text-destructive">
-          {(updateTransaction.error as any)?.message || 'İşlem güncellenemedi'}
+          {(updateTransaction.error as any)?.message || t('finance.form.updateFailed')}
         </p>
       )}
 
@@ -311,7 +310,7 @@ export function TransactionForm({ initialTransaction, onSuccess }: TransactionFo
           type="submit"
           disabled={createTransaction.isPending || updateTransaction.isPending || !user}
         >
-          Kaydet
+          {t('finance.form.submit')}
         </Button>
       </div>
     </form>

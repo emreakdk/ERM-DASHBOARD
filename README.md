@@ -1,111 +1,282 @@
-# ERM Dashboard - Cloud ERP / Pre-Accounting System
+# ERM Dashboard - Enterprise SaaS ERP System
 
-Modern, yüksek performanslı bir Cloud ERP ve Ön Muhasebe Dashboard uygulaması.
+🚀 **Production-Ready Multi-Tenant SaaS ERP & Pre-Accounting System**
 
-## 🚀 Teknoloji Stack
+A modern, scalable, and feature-rich enterprise resource planning system built with cutting-edge technologies. Perfect for businesses looking for a comprehensive financial management solution.
 
-- **Framework:** React 18 + TypeScript + Vite
-- **Styling:** Tailwind CSS + Shadcn UI (Radix UI tabanlı)
-- **Routing:** React Router v6
-- **State Management:** TanStack Query (React Query)
-- **Database:** Supabase (PostgreSQL)
-- **Icons:** Lucide React
-- **Charts:** Recharts
-- **Forms:** React Hook Form + Zod
+## ✨ Key Features
 
-## 📋 Özellikler
+### 🏢 Multi-Tenancy & RBAC
+- **Multi-company support** with tenant isolation
+- **Role-based access control** (Superadmin, Admin, User)
+- **Module-level permissions** for granular access control
+- **Company switching** for superadmins
 
-- ✅ Modern ve minimalist Apple-style tasarım
-- ✅ Dark Mode desteği
-- ✅ Supabase Authentication
-- ✅ TypeScript ile tam tip güvenliği
-- ✅ Responsive tasarım
-- ✅ Protected routes
-- ✅ TanStack Query ile optimize edilmiş veri yönetimi
+### 💳 Subscription & Quota Management
+- **Flexible subscription plans** (Free, Starter, Professional, Enterprise)
+- **Real-time quota enforcement** for users, invoices, customers, products
+- **Unlimited plans** with ∞ display
+- **Automatic quota tracking** and usage monitoring
+- **Upgrade prompts** when limits are reached
 
-## 🛠️ Kurulum
+### 🔐 Security & Authentication
+- **Supabase Authentication** with JWT tokens
+- **Row Level Security (RLS)** on all database tables
+- **Secure Edge Functions** with error logging
+- **Authorization headers** on all API calls
+- **Session management** with auto-refresh
 
-### 1. Bağımlılıkları Yükleyin
+### 📊 Business Modules
+- **Dashboard** with KPIs and analytics
+- **Finance Management** (Kasa & Banka)
+- **Invoice Management** with PDF generation
+- **Customer Management** (CRM)
+- **Product/Service Catalog**
+- **Deals & Opportunities** pipeline
+- **Quotes Management**
+- **Activity Tracking**
 
+### 🎨 Modern UI/UX
+- **Apple-inspired design** with clean aesthetics
+- **Dark/Light mode** support
+- **Fully responsive** for all screen sizes
+- **Shadcn UI components** (Radix UI based)
+- **Toast notifications** for user feedback
+- **Loading states** and error boundaries
+- **Smooth animations** and transitions
+
+### 🛠️ Developer Experience
+- **TypeScript** with strict typing
+- **React 18** with latest features
+- **Vite** for lightning-fast builds
+- **TanStack Query** for data fetching and caching
+- **React Hook Form + Zod** for form validation
+- **ESLint** for code quality
+
+## 🚀 Technology Stack
+
+### Frontend
+- **React 18** - Modern UI library
+- **TypeScript** - Type-safe development
+- **Vite** - Next-generation build tool
+- **Tailwind CSS** - Utility-first CSS framework
+- **Shadcn UI** - High-quality component library
+- **TanStack Query** - Powerful data synchronization
+- **React Router v6** - Client-side routing
+- **React Hook Form** - Performant form handling
+- **Zod** - Schema validation
+- **Lucide React** - Beautiful icons
+- **Recharts** - Composable charting library
+- **date-fns** - Modern date utility library
+
+### Backend
+- **Supabase** - Backend-as-a-Service
+- **PostgreSQL** - Robust relational database
+- **Edge Functions** - Serverless Deno functions
+- **Row Level Security** - Database-level security
+- **Real-time subscriptions** - Live data updates
+
+### DevOps & Tools
+- **Git** - Version control
+- **npm** - Package management
+- **ESLint** - Code linting
+- **PostCSS** - CSS processing
+
+## 📦 Installation & Setup
+
+### Prerequisites
+- Node.js 18+ and npm
+- Supabase account
+- Git
+
+### Quick Start
+
+1. **Clone the repository**
+```bash
+git clone <repository-url>
+cd ERM-DASHBOARD
+```
+
+2. **Install dependencies**
 ```bash
 npm install
 ```
 
-### 2. Environment Variables Ayarlayın
+3. **Configure environment variables**
 
-`.env.local` dosyası oluşturun ve aşağıdaki değişkenleri ekleyin:
+Copy `.env.example` to `.env.local` and fill in your Supabase credentials:
 
 ```env
-VITE_SUPABASE_URL=https://ewwhyzvlqjrtolfyxdve.supabase.co
-VITE_SUPABASE_ANON_KEY=your_anon_key_here
+VITE_SUPABASE_URL=your_supabase_project_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
-**Not:** `.env.example` dosyasını referans alabilirsiniz.
+4. **Run database migrations**
 
-### 3. Uygulamayı Başlatın
+Execute the SQL migrations in order:
+- `database/migrations/001_subscription_system.sql`
+- `database/migrations/002_enforce_company_plans.sql`
+- `database/migrations/003_system_errors_table.sql`
+
+See `database/migrations/000_MIGRATION_ORDER.md` for detailed instructions.
+
+5. **Deploy Edge Functions**
+
+```bash
+supabase functions deploy admin-create-user
+supabase functions deploy admin-delete-user
+supabase functions deploy admin-reset-password
+```
+
+6. **Start development server**
 
 ```bash
 npm run dev
 ```
 
-Uygulama `http://localhost:5173` adresinde çalışacaktır.
+Application will be available at `http://localhost:5173`
 
-## 📁 Proje Yapısı
+### Build for Production
+
+```bash
+npm run build
+```
+
+The production build will be in the `dist/` directory.
+
+## 📁 Project Structure
 
 ```
-src/
-├── components/
-│   ├── ui/              # Shadcn UI componentleri
-│   └── shared/          # Paylaşılan componentler
-├── contexts/            # React Context'ler (Auth, vb.)
-├── features/            # Feature-based modüller
-│   ├── auth/
-│   ├── dashboard/
-│   ├── transactions/
-│   ├── invoices/
-│   └── customers/
-├── hooks/               # Custom React hooks
-├── lib/                 # Utility fonksiyonlar ve konfigürasyonlar
-├── pages/               # Sayfa componentleri
-└── types/               # TypeScript tip tanımları
+ERM-DASHBOARD/
+├── src/
+│   ├── components/          # React components
+│   │   ├── ui/             # Shadcn UI components
+│   │   ├── admin/          # Admin-specific components
+│   │   ├── forms/          # Form components
+│   │   ├── layout/         # Layout components
+│   │   └── modals/         # Modal dialogs
+│   ├── contexts/           # React contexts
+│   │   ├── AuthContext.tsx
+│   │   ├── TenantContext.tsx
+│   │   └── PermissionsContext.tsx
+│   ├── hooks/              # Custom React hooks
+│   │   ├── useQuotaGuard.ts
+│   │   ├── useSupabaseQuery.ts
+│   │   └── useSubscription.ts
+│   ├── lib/                # Utilities and configurations
+│   ├── pages/              # Page components
+│   │   ├── admin/          # Admin pages
+│   │   └── ...             # Business module pages
+│   ├── constants/          # Constants and configurations
+│   └── types/              # TypeScript type definitions
+├── database/
+│   └── migrations/         # SQL migration files
+├── supabase/
+│   └── functions/          # Edge Functions
+│       ├── admin-create-user/
+│       ├── admin-delete-user/
+│       └── admin-reset-password/
+└── public/                 # Static assets
 ```
 
 ## 🗄️ Database Schema
 
-Proje aşağıdaki Supabase tablolarını kullanır:
+### Core Tables
+- **profiles** - User profiles with company association
+- **companies** - Multi-tenant company data
+- **subscription_plans** - Available subscription tiers
+- **company_usage** - Real-time quota tracking
+- **system_errors** - Centralized error logging
 
-- **profiles** - Kullanıcı profilleri
-- **customers** - Müşteri bilgileri
-- **transactions** - Gelir/Gider işlemleri
-- **invoices** - Fatura kayıtları
-- **invoice_items** - Fatura kalemleri
+### Business Tables
+- **customers** - Customer/client management
+- **products** - Product and service catalog
+- **invoices** - Invoice records
+- **invoice_items** - Invoice line items
+- **transactions** - Financial transactions
+- **deals** - Sales opportunities
+- **quotes** - Quote management
+- **activities** - Activity tracking
+- **activity_logs** - System activity audit trail
+
+### Permission Tables
+- **company_permissions** - Module-level permissions per company
+- **permission_templates** - Reusable permission sets
+
+## 🔐 Security Features
+
+- **Row Level Security (RLS)** on all tables
+- **JWT-based authentication** with Supabase Auth
+- **Role-based access control** (Superadmin, Admin, User)
+- **Module-level permissions** for granular access
+- **Secure Edge Functions** with authorization checks
+- **Error logging** for security monitoring
+- **Session management** with auto-refresh
+- **CORS configuration** for API security
 
 ## 🎨 Design System
 
-- **Font:** Inter / System UI
-- **Colors:** Slate/Gray tonları, Pastel Blue/Orange/Green vurgular
-- **Border Radius:** Medium-Large (0.5rem)
-- **Shadows:** Subtle, minimal
-- **Spacing:** Generous whitespace
+### Colors
+- **Primary:** Slate/Gray tones
+- **Accents:** Blue, Orange, Green pastels
+- **Dark Mode:** Full support with system preference detection
 
-## 📝 Geliştirme Notları
+### Typography
+- **Font Family:** Inter, System UI
+- **Font Sizes:** Responsive scale from xs to 4xl
+- **Font Weights:** 400 (normal), 500 (medium), 600 (semibold), 700 (bold)
 
-- Tüm componentler TypeScript ile yazılmıştır
-- Strict typing kullanılmıştır (`any` kullanımı yoktur)
-- Supabase client `src/lib/supabase.ts` içinde yapılandırılmıştır
-- Auth Context `src/contexts/AuthContext.tsx` içinde yönetilir
-- Protected routes `ProtectedRoute` component'i ile korunur
+### Components
+- **Border Radius:** 0.5rem (medium-large)
+- **Shadows:** Subtle, minimal elevation
+- **Spacing:** Generous whitespace for clarity
+- **Animations:** Smooth transitions (200-300ms)
 
-## 🔜 Sonraki Adımlar (Faz 2+)
+## 📚 Documentation
 
-- [ ] Dashboard KPI kartları ve grafikler
-- [ ] Transactions (Finans) modülü
-- [ ] Invoices (Faturalar) modülü
-- [ ] Customers (Müşteriler) modülü
-- [ ] Global filtreler (Tarih, Banka hesabı)
-- [ ] Unified DatePicker component
-- [ ] Account/Customer Selector (Combobox)
+- **[Quick Start Guide](QUICK_START.md)** - Get started in 5 minutes
+- **[Deployment Guide](DEPLOYMENT_GUIDE.md)** - Production deployment
+- **[Migration Guide](database/migrations/000_MIGRATION_ORDER.md)** - Database setup
+- **[Production Checklist](PRODUCTION_CHECKLIST.md)** - Pre-launch verification
+- **[Subscription System](SUBSCRIPTION_SYSTEM_README.md)** - Quota management
 
-## 📄 Lisans
+## 🤝 Support
 
-MIT
+For support, please contact the development team or refer to the documentation.
+
+## 🔮 Roadmap
+
+### Phase 1 (Completed)
+- ✅ Multi-tenant architecture
+- ✅ Subscription & quota system
+- ✅ RBAC & permissions
+- ✅ Core business modules
+- ✅ Error logging & monitoring
+
+### Phase 2 (Planned)
+- 🔄 English language support (i18n)
+- 🔄 Mobile responsive improvements
+- 🔄 PWA capabilities
+- 🔄 Advanced reporting
+- 🔄 Export functionality
+- 🔄 Bulk operations
+- 🔄 Real-time notifications
+
+### Phase 3 (Future)
+- 📱 Native mobile apps
+- 🌍 Multi-language support
+- 📊 Advanced analytics
+- 🔗 Third-party integrations
+- 🤖 AI-powered features
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🙏 Acknowledgments
+
+Built with modern technologies and best practices for enterprise-grade applications.
+
+---
+
+**Made with ❤️ for businesses worldwide**

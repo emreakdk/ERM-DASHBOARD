@@ -34,6 +34,7 @@ import {
 } from 'recharts'
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import {
   addDays,
   endOfMonth,
@@ -48,7 +49,7 @@ import {
   startOfYear,
   subMonths,
 } from 'date-fns'
-import { tr } from 'date-fns/locale'
+import { enUS, tr } from 'date-fns/locale'
 import { supabase } from '../lib/supabase'
 import { cn } from '../lib/utils'
 import { useAccounts, useCustomers, useDeals } from '../hooks/useSupabaseQuery'
@@ -67,8 +68,10 @@ type InvoiceRow = Database['public']['Tables']['invoices']['Row']
 type DealRow = Database['public']['Tables']['deals']['Row']
 
 export function DashboardPage() {
+  const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const now = new Date()
+  const dateLocale = useMemo(() => (i18n.language?.startsWith('en') ? enUS : tr), [i18n.language])
 
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([])
   const [accountFilterOpen, setAccountFilterOpen] = useState(false)
@@ -176,12 +179,12 @@ export function DashboardPage() {
   }, [customers])
 
   const stageLabels: Record<DealRow['stage'], string> = {
-    new: 'Yeni Fırsat',
-    meeting: 'Toplantı',
-    proposal: 'Teklif',
-    negotiation: 'Pazarlık',
-    won: 'Kazanıldı',
-    lost: 'Kaybedildi',
+    new: t('dashboard.newOpportunity'),
+    meeting: t('dashboard.meeting'),
+    proposal: t('dashboard.proposal'),
+    negotiation: t('dashboard.negotiation'),
+    won: t('dashboard.won'),
+    lost: t('dashboard.lost'),
   }
 
   const activeStages: DealRow['stage'][] = ['new', 'meeting', 'proposal', 'negotiation']
@@ -233,21 +236,23 @@ export function DashboardPage() {
     return accounts.filter((a) => a.name.toLowerCase().includes(q))
   }, [accountFilterQuery, accounts])
 
+  const fallbackLabel = t('dashboard.notSpecified')
+
   const accountFilterLabel = useMemo(() => {
-    if (selectedAccountIds.length === 0) return 'Tüm Hesaplar'
+    if (selectedAccountIds.length === 0) return t('dashboard.allAccounts')
     if (selectedAccountIds.length === 1) {
       const id = selectedAccountIds[0]
-      return accountsById.get(id)?.name ?? '1 Hesap Seçildi'
+      return accountsById.get(id)?.name ?? t('dashboard.oneAccountSelected')
     }
-    return `${selectedAccountIds.length} Hesap Seçildi`
-  }, [accountsById, selectedAccountIds])
+    return t('dashboard.accountsSelected', { count: selectedAccountIds.length })
+  }, [accountsById, selectedAccountIds, t])
 
   const dateRangeLabel = useMemo(() => {
-    if (!dateRange.from || !dateRange.to) return 'Tarih Aralığı'
-    const from = format(dateRange.from, 'd MMM', { locale: tr })
-    const to = format(dateRange.to, 'd MMM', { locale: tr })
+    if (!dateRange.from || !dateRange.to) return t('dashboard.dateRange')
+    const from = format(dateRange.from, 'd MMM', { locale: dateLocale })
+    const to = format(dateRange.to, 'd MMM', { locale: dateLocale })
     return `${from} - ${to}`
-  }, [dateRange.from, dateRange.to])
+  }, [dateLocale, dateRange.from, dateRange.to, t])
 
   const headerRight = (
     <div className="flex items-center gap-2">
@@ -262,16 +267,16 @@ export function DashboardPage() {
               disabled={accountsQuery.isLoading || accountsQuery.isError}
               className={cn('h-9 w-full bg-white dark:bg-background justify-between border-border/50 shadow-sm', selectedAccountIds.length === 0 && 'text-muted-foreground')}
             >
-              <span className="truncate">{accountsQuery.isLoading ? 'Yükleniyor...' : accountFilterLabel}</span>
+              <span className="truncate">{accountsQuery.isLoading ? t('common.loading') : accountFilterLabel}</span>
               <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-[--radix-popover-trigger-width] p-2" align="start">
             <Command value={accountFilterQuery} onValueChange={setAccountFilterQuery}>
-              <CommandInput placeholder="Hesap ara..." />
+              <CommandInput placeholder={t('dashboard.searchAccount')} />
               <CommandList>
                 {filteredAccounts.length === 0 ? (
-                  <CommandEmpty>Sonuç bulunamadı</CommandEmpty>
+                  <CommandEmpty>{t('common.noData')}</CommandEmpty>
                 ) : null}
                 <CommandGroup>
                   <CommandItem
@@ -280,7 +285,7 @@ export function DashboardPage() {
                     className="flex items-center gap-2"
                   >
                     <Check className={cn('h-4 w-4', selectedAccountIds.length === 0 ? 'opacity-100' : 'opacity-0')} />
-                    <span className="truncate">Tüm Hesaplar</span>
+                    <span className="truncate">{t('dashboard.allAccounts')}</span>
                   </CommandItem>
 
                   {filteredAccounts.map((a) => {
@@ -327,7 +332,7 @@ export function DashboardPage() {
               size="sm"
               onClick={() => setDateRange({ from: now, to: now })}
             >
-              Bugün
+              {t('dashboard.today')}
             </Button>
             <Button
               type="button"
@@ -340,7 +345,7 @@ export function DashboardPage() {
                 })
               }
             >
-              Bu Hafta
+              {t('dashboard.thisWeek')}
             </Button>
             <Button
               type="button"
@@ -348,7 +353,7 @@ export function DashboardPage() {
               size="sm"
               onClick={() => setDateRange({ from: startOfMonth(now), to: endOfMonth(now) })}
             >
-              Bu Ay
+              {t('dashboard.thisMonth')}
             </Button>
             <Button
               type="button"
@@ -359,7 +364,7 @@ export function DashboardPage() {
                 setDateRange({ from: startOfMonth(prev), to: endOfMonth(prev) })
               }}
             >
-              Geçen Ay
+              {t('dashboard.lastMonth')}
             </Button>
             <Button
               type="button"
@@ -367,16 +372,16 @@ export function DashboardPage() {
               size="sm"
               onClick={() => setDateRange({ from: startOfYear(now), to: endOfYear(now) })}
             >
-              Bu Yıl
+              {t('dashboard.thisYear')}
             </Button>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">Başlangıç</div>
+              <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">{t('dashboard.dateRangeStart')}</div>
               <Calendar
                 selected={dateRange.from}
-                locale={tr}
+                locale={dateLocale}
                 onSelect={(d) => {
                   if (!d) return
                   setDateRange((prev) => {
@@ -390,10 +395,10 @@ export function DashboardPage() {
               />
             </div>
             <div>
-              <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">Bitiş</div>
+              <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">{t('dashboard.dateRangeEnd')}</div>
               <Calendar
                 selected={dateRange.to}
-                locale={tr}
+                locale={dateLocale}
                 onSelect={(d) => {
                   if (!d) return
                   setDateRange((prev) => {
@@ -415,8 +420,8 @@ export function DashboardPage() {
           type="button"
           variant="outline"
           size="icon"
-          title="Fatura Kes"
-          aria-label="Fatura Kes"
+          title={t('dashboard.quickInvoice')}
+          aria-label={t('dashboard.quickInvoice')}
           onClick={() => navigate('/invoices/new')}
           className="h-9 w-9"
         >
@@ -426,8 +431,8 @@ export function DashboardPage() {
           type="button"
           variant="outline"
           size="icon"
-          title="Müşteri Ekle"
-          aria-label="Müşteri Ekle"
+          title={t('customers.addCustomer')}
+          aria-label={t('customers.addCustomer')}
           onClick={() => navigate('/musteriler', { state: { openNew: true } })}
           className="h-9 w-9"
         >
@@ -437,8 +442,8 @@ export function DashboardPage() {
           type="button"
           variant="outline"
           size="icon"
-          title="Fırsat Ekle"
-          aria-label="Fırsat Ekle"
+          title={t('dashboard.addOpportunity')}
+          aria-label={t('dashboard.addOpportunity')}
           onClick={() => navigate('/firsatlar', { state: { openNew: true } })}
           className="h-9 w-9"
         >
@@ -452,10 +457,10 @@ export function DashboardPage() {
     let income = 0
     let expense = 0
 
-    for (const t of transactions) {
-      const amount = Number(t.amount ?? 0)
-      if (t.type === 'income') income += amount
-      if (t.type === 'expense') expense += amount
+    for (const txn of transactions) {
+      const amount = Number(txn.amount ?? 0)
+      if (txn.type === 'income') income += amount
+      if (txn.type === 'expense') expense += amount
     }
 
     return {
@@ -472,26 +477,26 @@ export function DashboardPage() {
   }, [invoices])
 
   const incomeExpenseData = useMemo(() => {
-    const byMonth = new Map<string, { gelir: number; gider: number }>()
+    const byMonth = new Map<string, { income: number; expense: number }>()
 
-    for (const t of transactions) {
-      const d = new Date(t.transaction_date)
+    for (const txn of transactions) {
+      const d = new Date(txn.transaction_date)
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-      const prev = byMonth.get(key) ?? { gelir: 0, gider: 0 }
-      const amount = Number(t.amount ?? 0)
-      if (t.type === 'income') prev.gelir += amount
-      if (t.type === 'expense') prev.gider += amount
+      const prev = byMonth.get(key) ?? { income: 0, expense: 0 }
+      const amount = Number(txn.amount ?? 0)
+      if (txn.type === 'income') prev.income += amount
+      if (txn.type === 'expense') prev.expense += amount
       byMonth.set(key, prev)
     }
 
     const anchor = startOfMonth(new Date())
-    const padded: Array<{ name: string; gelir: number; gider: number }> = []
+    const padded: Array<{ name: string; income: number; expense: number }> = []
 
     for (let i = 5; i >= 0; i -= 1) {
       const d = startOfMonth(subMonths(anchor, i))
       const key = format(d, 'yyyy-MM')
-      const v = byMonth.get(key) ?? { gelir: 0, gider: 0 }
-      padded.push({ name: key, gelir: v.gelir, gider: v.gider })
+      const v = byMonth.get(key) ?? { income: 0, expense: 0 }
+      padded.push({ name: key, income: v.income, expense: v.expense })
     }
 
     return padded
@@ -499,11 +504,12 @@ export function DashboardPage() {
 
   const financialCategoryData = useMemo(() => {
     const totals = new Map<string, number>()
+    const otherLabel = t('dashboard.other')
 
-    for (const t of transactions) {
-      if (t.type !== financialMode) continue
-      const key = t.category || 'Diğer'
-      totals.set(key, (totals.get(key) ?? 0) + Number(t.amount ?? 0))
+    for (const txn of transactions) {
+      if (txn.type !== financialMode) continue
+      const key = txn.category || otherLabel
+      totals.set(key, (totals.get(key) ?? 0) + Number(txn.amount ?? 0))
     }
 
     const palette =
@@ -515,28 +521,28 @@ export function DashboardPage() {
       .map(([name, value], idx) => ({ name, value, color: palette[idx % palette.length] }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 8)
-  }, [financialMode, transactions])
+  }, [financialMode, t, transactions])
 
   const financialCounterpartyData = useMemo(() => {
     const totals = new Map<string, number>()
 
-    for (const t of transactions) {
-      if (t.type !== financialMode) continue
-      const customerName = t.customer_id ? customersById.get(t.customer_id)?.name : undefined
-      const payee = String(t.payee ?? '').trim()
+    for (const txn of transactions) {
+      if (txn.type !== financialMode) continue
+      const customerName = txn.customer_id ? customersById.get(txn.customer_id)?.name : undefined
+      const payee = String(txn.payee ?? '').trim()
       const key =
         financialMode === 'income'
-          ? (customerName ?? payee ?? '').trim() || 'Belirtilmemiş'
-          : (payee || customerName || 'Belirtilmemiş')
+          ? (customerName ?? payee ?? '').trim() || fallbackLabel
+          : payee || customerName || fallbackLabel
 
-      totals.set(key, (totals.get(key) ?? 0) + Number(t.amount ?? 0))
+      totals.set(key, (totals.get(key) ?? 0) + Number(txn.amount ?? 0))
     }
 
     return Array.from(totals.entries())
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 5)
-  }, [customersById, financialMode, transactions])
+  }, [customersById, fallbackLabel, financialMode, t, transactions])
 
   const recentTransactions = useMemo(() => {
     return transactions.slice(0, 10)
@@ -551,7 +557,7 @@ export function DashboardPage() {
     return (
       <Card>
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle>Finansal Dağılım</CardTitle>
+          <CardTitle>{t('dashboard.financialDistribution')}</CardTitle>
 
           <div className="flex items-center rounded-lg bg-muted/60 p-1">
             <button
@@ -562,7 +568,7 @@ export function DashboardPage() {
                 financialMode === 'income' ? segmentedActive : segmentedBase
               )}
             >
-              Gelir
+              {t('dashboard.revenue')}
             </button>
             <button
               type="button"
@@ -572,7 +578,7 @@ export function DashboardPage() {
                 financialMode === 'expense' ? segmentedActive : segmentedBase
               )}
             >
-              Gider
+              {t('dashboard.expense')}
             </button>
           </div>
         </CardHeader>
@@ -580,14 +586,14 @@ export function DashboardPage() {
         <CardContent>
           <Tabs defaultValue="categories" className="w-full">
             <TabsList className="w-full sm:w-auto">
-              <TabsTrigger value="categories">Kategoriler</TabsTrigger>
-              <TabsTrigger value="payees">Cariler</TabsTrigger>
+              <TabsTrigger value="categories">{t('dashboard.categoriesTab')}</TabsTrigger>
+              <TabsTrigger value="payees">{t('dashboard.counterpartiesTab')}</TabsTrigger>
             </TabsList>
 
             <TabsContent value="categories" className="mt-4">
               {financialCategoryData.length === 0 ? (
                 <div className="flex items-center justify-center h-[300px] text-muted-foreground">
-                  <p className="text-sm">Görüntülenecek veri yok</p>
+                  <p className="text-sm">{t('dashboard.noDataToDisplay')}</p>
                 </div>
               ) : (
                 <>
@@ -630,7 +636,7 @@ export function DashboardPage() {
             <TabsContent value="payees" className="mt-4">
               {financialCounterpartyData.length === 0 ? (
                 <div className="flex items-center justify-center h-[300px] text-muted-foreground">
-                  <p className="text-sm">Görüntülenecek veri yok</p>
+                  <p className="text-sm">{t('dashboard.noDataToDisplay')}</p>
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height={300}>
@@ -669,14 +675,14 @@ export function DashboardPage() {
   }
 
   return (
-    <AppLayout title="Dashboard" headerRight={headerRight}>
+    <AppLayout title={t('dashboard.title')} headerRight={headerRight}>
       <div className="space-y-6">
         {/* KPI Cards */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Toplam Gelir
+                {t('dashboard.totalRevenue')}
               </CardTitle>
               <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
                 <TrendingUp className="h-5 w-5 text-green-600 dark:text-green-400" />
@@ -685,7 +691,7 @@ export function DashboardPage() {
             <CardContent>
               <div className="text-2xl font-bold">{formatCurrency(totalIncome)}</div>
               <p className="text-xs text-muted-foreground mt-1">
-                Toplam
+                {t('common.total')}
               </p>
             </CardContent>
           </Card>
@@ -693,7 +699,7 @@ export function DashboardPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Toplam Gider
+                {t('dashboard.totalExpense')}
               </CardTitle>
               <div className="h-10 w-10 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
                 <TrendingDown className="h-5 w-5 text-red-600 dark:text-red-400" />
@@ -702,7 +708,7 @@ export function DashboardPage() {
             <CardContent>
               <div className="text-2xl font-bold">{formatCurrency(totalExpense)}</div>
               <p className="text-xs text-muted-foreground mt-1">
-                Toplam
+                {t('common.total')}
               </p>
             </CardContent>
           </Card>
@@ -710,7 +716,7 @@ export function DashboardPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Net Kar
+                {t('dashboard.netProfit')}
               </CardTitle>
               <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
                 <DollarSign className="h-5 w-5 text-blue-600 dark:text-blue-400" />
@@ -719,7 +725,7 @@ export function DashboardPage() {
             <CardContent>
               <div className="text-2xl font-bold">{formatCurrency(netProfit)}</div>
               <p className="text-xs text-muted-foreground mt-1">
-                Toplam
+                {t('common.total')}
               </p>
             </CardContent>
           </Card>
@@ -727,7 +733,7 @@ export function DashboardPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Bekleyen Alacak
+                {t('dashboard.pendingReceivables')}
               </CardTitle>
               <div className="h-10 w-10 rounded-full bg-orange-100 dark:bg-orange-900/20 flex items-center justify-center">
                 <AlertCircle className="h-5 w-5 text-orange-600 dark:text-orange-400" />
@@ -736,7 +742,7 @@ export function DashboardPage() {
             <CardContent>
               <div className="text-2xl font-bold">{formatCurrency(pendingDebt)}</div>
               <p className="text-xs text-muted-foreground mt-1">
-                Toplam
+                {t('common.total')}
               </p>
             </CardContent>
           </Card>
@@ -747,12 +753,12 @@ export function DashboardPage() {
           {/* Income vs Expense Chart */}
           <Card className="md:col-span-2">
             <CardHeader>
-              <CardTitle>Gelir vs Gider</CardTitle>
+              <CardTitle>{t('dashboard.revenueVsExpense')}</CardTitle>
             </CardHeader>
             <CardContent>
               {incomeExpenseData.length === 0 ? (
                 <div className="flex items-center justify-center h-[300px] text-muted-foreground">
-                  <p className="text-sm">Görüntülenecek veri yok</p>
+                  <p className="text-sm">{t('dashboard.noDataToDisplay')}</p>
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height={300}>
@@ -771,11 +777,12 @@ export function DashboardPage() {
                     <CartesianGrid vertical={false} strokeDasharray="3 3" className="stroke-muted" />
                     <XAxis dataKey="name" axisLine={false} tickLine={false} className="text-xs" />
                     <YAxis axisLine={false} tickLine={false} className="text-xs" />
-                    <Tooltip />
+                    <Tooltip formatter={(value) => formatCurrency(Number(value))} />
 
                     <Area
                       type="monotone"
-                      dataKey="gelir"
+                      dataKey="income"
+                      name={t('dashboard.revenue')}
                       stroke="#10b981"
                       strokeWidth={2}
                       fill="url(#incomeGradient)"
@@ -785,7 +792,8 @@ export function DashboardPage() {
                     />
                     <Area
                       type="monotone"
-                      dataKey="gider"
+                      dataKey="expense"
+                      name={t('dashboard.expense')}
                       stroke="#ef4444"
                       strokeWidth={2}
                       fill="url(#expenseGradient)"
@@ -802,21 +810,21 @@ export function DashboardPage() {
           {/* Sales Pipeline Summary */}
           <Card>
             <CardHeader>
-              <CardTitle>Satış Hunisi</CardTitle>
+              <CardTitle>{t('dashboard.salesPipeline')}</CardTitle>
             </CardHeader>
             <CardContent>
               {dealsQuery.isLoading ? (
                 <div className="flex items-center justify-center h-[300px] text-muted-foreground">
-                  <p className="text-sm">Yükleniyor...</p>
+                  <p className="text-sm">{t('common.loading')}</p>
                 </div>
               ) : pipelineSummary.rows.every((r) => r.count === 0) ? (
                 <div className="flex items-center justify-center h-[300px] text-muted-foreground">
-                  <p className="text-sm">Aktif fırsat bulunamadı</p>
+                  <p className="text-sm">{t('dashboard.noActiveDeals')}</p>
                 </div>
               ) : (
                 <div className="space-y-4">
                   <div className="rounded-md border bg-muted/30 p-3">
-                    <div className="text-xs text-muted-foreground">Toplam Pipeline</div>
+                    <div className="text-xs text-muted-foreground">{t('dashboard.pipelineTotal')}</div>
                     <div className="mt-1 text-lg font-semibold tabular-nums">
                       {formatCurrency(pipelineSummary.pipelineTotal)}
                     </div>
@@ -831,7 +839,10 @@ export function DashboardPage() {
                             <div className="min-w-0">
                               <div className="text-sm font-medium truncate">
                                 {stageLabels[r.stage]}
-                                <span className="text-xs text-muted-foreground"> • {r.count} fırsat</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {' '}
+                                  • {t('dashboard.opportunityCount', { count: r.count })}
+                                </span>
                               </div>
                               <div className="text-xs text-muted-foreground tabular-nums">
                                 {formatCurrency(r.total)}
@@ -863,13 +874,13 @@ export function DashboardPage() {
           <Tabs defaultValue="transactions">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between gap-3">
-                <CardTitle className="whitespace-nowrap">Hareketler</CardTitle>
+                <CardTitle className="whitespace-nowrap">{t('dashboard.activityCardTitle')}</CardTitle>
                 <TabsList className="h-9">
                   <TabsTrigger value="transactions" className="h-8">
-                    Son İşlemler
+                    {t('dashboard.recentTransactionsTab')}
                   </TabsTrigger>
                   <TabsTrigger value="actions" className="h-8">
-                    Tahsilat Alarmı
+                    {t('dashboard.collectionAlertsTab')}
                   </TabsTrigger>
                 </TabsList>
               </CardHeader>
@@ -877,27 +888,27 @@ export function DashboardPage() {
                 <TabsContent value="transactions" className="mt-0">
                   {recentTransactions.length === 0 ? (
                     <div className="flex items-center justify-center py-8 text-muted-foreground">
-                      <p className="text-sm">Henüz işlem bulunamadı</p>
+                      <p className="text-sm">{t('dashboard.noTransactions')}</p>
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      {recentTransactions.map((t) => {
-                        const accountName = t.bank_account ? accountsById.get(t.bank_account)?.name : undefined
-                        const amount = Number(t.amount ?? 0)
-                        const isIncome = t.type === 'income'
+                      {recentTransactions.map((txn) => {
+                        const accountName = txn.bank_account ? accountsById.get(txn.bank_account)?.name : undefined
+                        const amount = Number(txn.amount ?? 0)
+                        const isIncome = txn.type === 'income'
 
                         return (
                           <div
-                            key={t.id}
+                            key={txn.id}
                             className="group flex items-center justify-between gap-3 rounded-md border-b border-border pb-4 last:border-0 last:pb-0 cursor-pointer hover:bg-muted/30"
-                            onClick={() => navigate(`/finans?editId=${t.id}`)}
+                            onClick={() => navigate(`/finans?editId=${txn.id}`)}
                           >
                             <div className="space-y-1">
                               <p className="text-sm font-medium">
-                                {t.category}
+                                {txn.category}
                                 {accountName ? ` • ${accountName}` : ''}
                               </p>
-                              <p className="text-xs text-muted-foreground">{formatShortDate(t.transaction_date)}</p>
+                              <p className="text-xs text-muted-foreground">{formatShortDate(txn.transaction_date)}</p>
                             </div>
                             <div className="flex items-center gap-2">
                               <div
@@ -920,19 +931,19 @@ export function DashboardPage() {
                 <TabsContent value="actions" className="mt-0">
                   {actionInvoicesQuery.isLoading ? (
                     <div className="flex items-center justify-center py-8 text-muted-foreground">
-                      <p className="text-sm">Yükleniyor...</p>
+                      <p className="text-sm">{t('common.loading')}</p>
                     </div>
                   ) : overdueInvoices.length === 0 && upcomingInvoices.length === 0 ? (
                     <div className="flex items-center justify-center py-8 text-muted-foreground">
-                      <p className="text-sm">Kritik tahsilat bulunamadı</p>
+                      <p className="text-sm">{t('dashboard.noCollectionAlerts')}</p>
                     </div>
                   ) : (
                     <div className="space-y-5">
                       {overdueInvoices.length > 0 ? (
                         <div className="space-y-3">
-                          <div className="text-xs font-medium text-red-600">Gecikmiş</div>
+                          <div className="text-xs font-medium text-red-600">{t('dashboard.overdue')}</div>
                           {overdueInvoices.map((inv) => {
-                            const customerName = customersById.get(inv.customer_id)?.name ?? 'Müşteri'
+                            const customerName = customersById.get(inv.customer_id)?.name ?? t('dashboard.customer')
                             const due = parseISO(inv.due_date)
                             const days = Math.max(1, differenceInCalendarDays(startOfDay(new Date()), due))
                             return (
@@ -944,7 +955,10 @@ export function DashboardPage() {
                                 <div className="min-w-0">
                                   <div className="text-sm font-medium truncate">{customerName}</div>
                                   <div className="text-xs text-muted-foreground">
-                                    Vade: {formatShortDate(inv.due_date)} • {days} gün gecikti
+                                    {t('dashboard.overdueDescription', {
+                                      date: formatShortDate(inv.due_date),
+                                      days,
+                                    })}
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -961,9 +975,9 @@ export function DashboardPage() {
 
                       {upcomingInvoices.length > 0 ? (
                         <div className="space-y-3">
-                          <div className="text-xs font-medium text-orange-600">Yaklaşan (7 gün)</div>
+                          <div className="text-xs font-medium text-orange-600">{t('dashboard.upcoming')}</div>
                           {upcomingInvoices.map((inv) => {
-                            const customerName = customersById.get(inv.customer_id)?.name ?? 'Müşteri'
+                            const customerName = customersById.get(inv.customer_id)?.name ?? t('dashboard.customer')
                             const due = parseISO(inv.due_date)
                             const daysLeft = Math.max(0, differenceInCalendarDays(due, startOfDay(new Date())))
                             return (
@@ -975,7 +989,10 @@ export function DashboardPage() {
                                 <div className="min-w-0">
                                   <div className="text-sm font-medium truncate">{customerName}</div>
                                   <div className="text-xs text-muted-foreground">
-                                    Vade: {formatShortDate(inv.due_date)} • {daysLeft} gün kaldı
+                                    {t('dashboard.upcomingDescription', {
+                                      date: formatShortDate(inv.due_date),
+                                      days: daysLeft,
+                                    })}
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-2">

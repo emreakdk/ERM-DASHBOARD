@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AppLayout } from '../components/layout/AppLayout'
 import { CreateQuoteForm } from '../components/forms/CreateQuoteForm'
 import {
@@ -23,6 +24,8 @@ import { formatCurrency, formatShortDate } from '../lib/format'
 import { cn } from '../lib/utils'
 import type { Database } from '../types/database'
 import { supabase } from '../lib/supabase'
+import { usePermissions } from '../contexts/PermissionsContext'
+import { useQuota } from '../hooks/useQuota'
 import {
   endOfMonth,
   endOfWeek,
@@ -46,13 +49,13 @@ type DateRange = {
   to?: Date
 }
 
-const quoteStatusLabels: Record<QuoteRow['status'], string> = {
-  draft: 'Taslak',
-  sent: 'Gönderildi',
-  accepted: 'Onaylandı',
-  rejected: 'Reddedildi',
-  converted: 'Faturaya Dönüştü',
-}
+const getQuoteStatusLabels = (t: (key: string) => string): Record<QuoteRow['status'], string> => ({
+  draft: t('quotes.draft'),
+  sent: t('quotes.sent'),
+  accepted: t('quotes.accepted'),
+  rejected: t('quotes.rejected'),
+  converted: t('quotes.converted'),
+})
 
 const quoteBadgeVariants: Record<QuoteRow['status'], { variant: 'default' | 'secondary' | 'destructive' | 'outline'; className?: string }> = {
   draft: {
@@ -78,6 +81,8 @@ const quoteBadgeVariants: Record<QuoteRow['status'], { variant: 'default' | 'sec
 }
 
 export function QuotesPage() {
+  const { t } = useTranslation()
+  const quoteStatusLabels = useMemo(() => getQuoteStatusLabels(t), [t])
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const now = new Date()
@@ -87,6 +92,34 @@ export function QuotesPage() {
   const [deletingQuote, setDeletingQuote] = useState<QuoteRow | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined)
+  const { loading: permissionsLoading, canViewModule, canEditModule } = usePermissions()
+  const canViewQuotes = canViewModule('quotes')
+  const canEditQuotes = canEditModule('quotes')
+  const quoteQuota = useQuota('quotes')
+
+  const showEditDenied = useCallback(() => {
+    toast({
+      title: t('errors.unauthorized'),
+      description: t('quotes.noPermission'),
+      variant: 'destructive',
+    })
+  }, [])
+
+  const ensureCanEdit = useCallback(() => {
+    if (!canEditQuotes) {
+      showEditDenied()
+      return false
+    }
+    if (!quoteQuota.canAdd) {
+      toast({
+        title: t('quotes.limitExceeded'),
+        description: quoteQuota.message || t('quotes.quoteLimitReached'),
+        variant: 'destructive',
+      })
+      return false
+    }
+    return true
+  }, [canEditQuotes, showEditDenied, quoteQuota])
 
   const dateFromStr = useMemo(() => {
     return dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : undefined
@@ -97,11 +130,11 @@ export function QuotesPage() {
   }, [dateRange?.to])
 
   const dateRangeLabel = useMemo(() => {
-    if (!dateRange?.from || !dateRange?.to) return 'Tarih Aralığı'
+    if (!dateRange?.from || !dateRange?.to) return t('dashboard.dateRange')
     const from = format(dateRange.from, 'd MMM', { locale: tr })
     const to = format(dateRange.to, 'd MMM', { locale: tr })
     return `${from} - ${to}`
-  }, [dateRange?.from, dateRange?.to])
+  }, [dateRange?.from, dateRange?.to, t])
 
   const quotesQuery = useQuotesByDateRange({ from: dateFromStr, to: dateToStr })
   const customersQuery = useCustomers()
@@ -125,26 +158,49 @@ export function QuotesPage() {
     })
   }, [customersById, quotes, searchQuery])
 
+  if (permissionsLoading) {
+    return (
+      <AppLayout title={t('nav.quotes')}>
+        <div className="flex h-[60vh] items-center justify-center">
+          <div className="text-sm text-muted-foreground">{t('common.loading')}</div>
+        </div>
+      </AppLayout>
+    )
+  }
+
+  if (!canViewQuotes) {
+    return (
+      <AppLayout title={t('nav.quotes')}>
+        <div className="flex h-[60vh] flex-col items-center justify-center gap-3 text-center">
+          <div className="text-2xl font-semibold">{t('quotes.noAccess')}</div>
+          <p className="max-w-md text-muted-foreground">
+            {t('quotes.noAccessDescription')}
+          </p>
+        </div>
+      </AppLayout>
+    )
+  }
+
   return (
-    <AppLayout title="Teklifler">
+    <AppLayout title={t('nav.quotes')}>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-semibold">Teklifler</h2>
-            <p className="text-sm text-muted-foreground mt-1">Tekliflerinizi oluşturun ve yönetin</p>
+            <h2 className="text-2xl font-semibold">{t('quotes.pageTitle')}</h2>
+            <p className="text-sm text-muted-foreground mt-1">{t('quotes.pageDescription')}</p>
           </div>
         </div>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-3">
-            <CardTitle className="whitespace-nowrap">Teklif Listesi</CardTitle>
+            <CardTitle className="whitespace-nowrap">{t('quotes.quoteList')}</CardTitle>
             <div className="flex flex-1 min-w-0 items-center justify-end gap-2">
               <div className="relative w-full max-w-sm min-w-0">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Teklif veya müşteri ara..."
+                  placeholder={t('quotes.searchPlaceholder')}
                   className="pl-9"
                 />
               </div>
@@ -166,7 +222,7 @@ export function QuotesPage() {
                 <PopoverContent align="end" className="w-auto p-3">
                   <div className="flex flex-wrap gap-2 pb-3">
                     <Button type="button" variant="ghost" size="sm" onClick={() => setDateRange({ from: now, to: now })}>
-                      Bugün
+                      {t('common.today')}
                     </Button>
                     <Button
                       type="button"
@@ -179,7 +235,7 @@ export function QuotesPage() {
                         })
                       }
                     >
-                      Bu Hafta
+                      {t('quotes.thisWeek')}
                     </Button>
                     <Button
                       type="button"
@@ -187,7 +243,7 @@ export function QuotesPage() {
                       size="sm"
                       onClick={() => setDateRange({ from: startOfMonth(now), to: endOfMonth(now) })}
                     >
-                      Bu Ay
+                      {t('quotes.thisMonth')}
                     </Button>
                     <Button
                       type="button"
@@ -198,7 +254,7 @@ export function QuotesPage() {
                         setDateRange({ from: startOfMonth(prev), to: endOfMonth(prev) })
                       }}
                     >
-                      Geçen Ay
+                      {t('quotes.lastMonth')}
                     </Button>
                     <Button
                       type="button"
@@ -206,16 +262,16 @@ export function QuotesPage() {
                       size="sm"
                       onClick={() => setDateRange({ from: startOfYear(now), to: endOfYear(now) })}
                     >
-                      Bu Yıl
+                      {t('quotes.thisYear')}
                     </Button>
                     <Button type="button" variant="ghost" size="sm" onClick={() => setDateRange(undefined)}>
-                      Temizle
+                      {t('quotes.clear')}
                     </Button>
                   </div>
 
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
-                      <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">Başlangıç</div>
+                      <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">{t('quotes.start')}</div>
                       <Calendar
                         selected={dateRange?.from}
                         locale={tr}
@@ -230,7 +286,7 @@ export function QuotesPage() {
                       />
                     </div>
                     <div>
-                      <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">Bitiş</div>
+                      <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">{t('quotes.end')}</div>
                       <Calendar
                         selected={dateRange?.to}
                         locale={tr}
@@ -257,29 +313,31 @@ export function QuotesPage() {
               >
                 <SheetTrigger asChild>
                   <Button
+                    disabled={!canEditQuotes}
                     onClick={() => {
+                      if (!ensureCanEdit()) return
                       setEditingQuote(null)
                     }}
                   >
                     <Plus className="mr-2 h-4 w-4" />
-                    Yeni Teklif
+                    {t('quotes.newQuote')}
                   </Button>
                 </SheetTrigger>
                 <SheetContent side="right" className="w-full sm:w-[540px] lg:w-[900px] overflow-y-auto">
                   <SheetHeader>
-                    <SheetTitle>{editingQuote ? 'Teklifi Düzenle' : 'Teklif Oluştur'}</SheetTitle>
+                    <SheetTitle>{editingQuote ? t('quotes.editQuote') : t('quotes.newQuote')}</SheetTitle>
                   </SheetHeader>
                   <div className="px-6 pb-6">
                     {editingQuote ? (
                       <div className="mb-6 rounded-lg border p-4">
-                        <div className="text-sm font-medium">Müşteri Linki</div>
+                        <div className="text-sm font-medium">{t('quotes.customerLink')}</div>
                         <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                           <Input
                             readOnly
                             value={
                               editingQuote.token
                                 ? `${window.location.origin}/p/quote/${editingQuote.token}`
-                                : 'Bu teklif için henüz link oluşturulmadı.'
+                                : t('quotes.linkNotCreated')
                             }
                           />
                           {editingQuote.token ? (
@@ -292,24 +350,24 @@ export function QuotesPage() {
                                     await navigator.clipboard.writeText(
                                       `${window.location.origin}/p/quote/${editingQuote.token}`
                                     )
-                                    toast({ title: 'Link kopyalandı' })
+                                    toast({ title: t('quotes.linkCopied') })
                                   } catch (e: any) {
                                     toast({
-                                      title: 'Kopyalama başarısız',
-                                      description: e?.message || 'Bilinmeyen hata',
+                                      title: t('quotes.copyFailed'),
+                                      description: e?.message || t('common.errorOccurred'),
                                       variant: 'destructive',
                                     })
                                   }
                                 }}
                               >
-                                Kopyala
+                                {t('quotes.copy')}
                               </Button>
                               <Button
                                 type="button"
                                 variant="outline"
                                 onClick={() => window.open(`/p/quote/${editingQuote.token}`, '_blank', 'noopener,noreferrer')}
                               >
-                                Önizle
+                                {t('quotes.preview')}
                               </Button>
                             </>
                           ) : (
@@ -327,17 +385,17 @@ export function QuotesPage() {
 
                                   setEditingQuote({ ...editingQuote, token: newToken })
                                   queryClient.invalidateQueries({ queryKey: ['quotes'] })
-                                  toast({ title: 'Link oluşturuldu' })
+                                  toast({ title: t('quotes.linkCreated') })
                                 } catch (e: any) {
                                   toast({
-                                    title: 'Link oluşturulamadı',
-                                    description: e?.message || 'Bilinmeyen hata',
+                                    title: t('quotes.linkCreateFailed'),
+                                    description: e?.message || t('common.errorOccurred'),
                                     variant: 'destructive',
                                   })
                                 }
                               }}
                             >
-                              Link Oluştur
+                              {t('quotes.createLink')}
                             </Button>
                           )}
                         </div>
@@ -348,7 +406,7 @@ export function QuotesPage() {
                       onSuccess={() => {
                         setOpen(false)
                         toast({
-                          title: editingQuote ? 'Teklif güncellendi' : 'Teklif oluşturuldu',
+                          title: editingQuote ? t('quotes.quoteUpdated') : t('quotes.quoteCreated'),
                         })
                         setEditingQuote(null)
                       }}
@@ -367,26 +425,26 @@ export function QuotesPage() {
               </div>
             ) : quotesQuery.isError ? (
               <p className="text-sm text-destructive">
-                {(quotesQuery.error as any)?.message || 'Teklifler yüklenemedi'}
+                {(quotesQuery.error as any)?.message || t('quotes.loadFailed')}
               </p>
             ) : (
               <div className="rounded-md border">
                 <table className="w-full">
                   <thead>
                     <tr className="border-b bg-muted/50">
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Teklif No</th>
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Müşteri</th>
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Tarih</th>
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Durum</th>
-                      <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">Toplam</th>
-                      <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">İşlem</th>
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">{t('quotes.quoteNumber')}</th>
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">{t('quotes.customer')}</th>
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">{t('quotes.date')}</th>
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">{t('quotes.status')}</th>
+                      <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">{t('quotes.total')}</th>
+                      <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">{t('quotes.actions')}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredQuotes.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="h-32 text-center">
-                          <p className="text-sm text-muted-foreground">Teklif listeniz boş.</p>
+                          <p className="text-sm text-muted-foreground">{t('quotes.emptyList')}</p>
                         </td>
                       </tr>
                     ) : (
@@ -412,7 +470,7 @@ export function QuotesPage() {
                                     <Button
                                       variant="outline"
                                       size="icon"
-                                      title={q.token ? 'Paylaş' : 'Paylaşmak için link oluşturun'}
+                                      title={q.token ? t('quotes.shareTooltip') : t('quotes.shareTooltipNoLink')}
                                       disabled={!q.token}
                                     >
                                       <Share2 className="h-4 w-4" />
@@ -431,18 +489,18 @@ export function QuotesPage() {
                                             if (!q.token) return
                                             const fullUrl = `${window.location.origin}/p/quote/${q.token}`
                                             await navigator.clipboard.writeText(fullUrl)
-                                            toast({ title: 'Link kopyalandı' })
+                                            toast({ title: t('quotes.linkCopied') })
                                           } catch (e: any) {
                                             toast({
-                                              title: 'Kopyalama başarısız',
-                                              description: e?.message || 'Bilinmeyen hata',
+                                              title: t('quotes.copyFailed'),
+                                              description: e?.message || t('common.errorOccurred'),
                                               variant: 'destructive',
                                             })
                                           }
                                         }}
                                       >
                                         <Copy className="h-4 w-4" />
-                                        Bağlantıyı Kopyala
+                                        {t('quotes.copyLink')}
                                       </DropdownMenu.Item>
 
                                       <DropdownMenu.Item
@@ -454,7 +512,7 @@ export function QuotesPage() {
                                         }}
                                       >
                                         <ExternalLink className="h-4 w-4" />
-                                        Önizle
+                                        {t('quotes.preview')}
                                       </DropdownMenu.Item>
 
                                       <DropdownMenu.Item
@@ -465,8 +523,8 @@ export function QuotesPage() {
                                           const customer = customersById.get(q.customer_id)
                                           if (!customer?.phone) {
                                             toast({
-                                              title: 'Telefon numarası bulunamadı',
-                                              description: 'Müşterinin telefon numarası kayıtlı değil.',
+                                              title: t('quotes.phoneNotFound'),
+                                              description: t('quotes.phoneNotFoundDesc'),
                                               variant: 'destructive',
                                             })
                                             return
@@ -483,8 +541,8 @@ export function QuotesPage() {
                                           }
                                           if (!cleanPhone) {
                                             toast({
-                                              title: 'Hata',
-                                              description: 'Müşteri telefon numarası eksik',
+                                              title: t('quotes.phoneError'),
+                                              description: t('quotes.phoneMissing'),
                                               variant: 'destructive',
                                             })
                                             return
@@ -502,7 +560,7 @@ export function QuotesPage() {
                                         }}
                                       >
                                         <MessageCircle className="h-4 w-4 text-green-600" />
-                                        WhatsApp'tan Gönder
+                                        {t('quotes.sendWhatsApp')}
                                       </DropdownMenu.Item>
                                     </DropdownMenu.Content>
                                   </DropdownMenu.Portal>
@@ -511,8 +569,10 @@ export function QuotesPage() {
                                 <Button
                                   variant="outline"
                                   size="icon"
-                                  title="Düzenle"
+                                  title={t('quotes.edit')}
+                                  disabled={!canEditQuotes}
                                   onClick={() => {
+                                    if (!ensureCanEdit()) return
                                     setEditingQuote(q)
                                     setOpen(true)
                                   }}
@@ -523,17 +583,18 @@ export function QuotesPage() {
                                 <Button
                                   variant="outline"
                                   size="icon"
-                                  title="Faturaya Dönüştür"
-                                  disabled={q.status === 'converted' || convertToInvoice.isPending}
+                                  title={t('quotes.convertToInvoiceAction')}
+                                  disabled={!canEditQuotes || q.status === 'converted' || convertToInvoice.isPending}
                                   onClick={async () => {
+                                    if (!ensureCanEdit()) return
                                     try {
                                       const invoiceId = await convertToInvoice.mutateAsync({ quoteId: q.id })
-                                      toast({ title: 'Faturaya dönüştürüldü' })
+                                      toast({ title: t('quotes.convertedToInvoice') })
                                       navigate(`/faturalar?open=${invoiceId}`)
                                     } catch (e: any) {
                                       toast({
-                                        title: 'Dönüştürme başarısız',
-                                        description: e?.message || 'Bilinmeyen hata',
+                                        title: t('quotes.conversionFailed'),
+                                        description: e?.message || t('common.errorOccurred'),
                                         variant: 'destructive',
                                       })
                                     }
@@ -545,9 +606,13 @@ export function QuotesPage() {
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  title="Sil"
+                                  title={t('quotes.delete')}
                                   className="text-destructive hover:text-destructive"
-                                  onClick={() => setDeletingQuote(q)}
+                                  disabled={!canEditQuotes}
+                                  onClick={() => {
+                                    if (!ensureCanEdit()) return
+                                    setDeletingQuote(q)
+                                  }}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
@@ -572,14 +637,12 @@ export function QuotesPage() {
         >
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Silme Onayı</AlertDialogTitle>
-              <AlertDialogDescription>
-                Bu kaydı silmek istediğinize emin misiniz? Bu işlem geri alınamaz.
-              </AlertDialogDescription>
+              <AlertDialogTitle>{t('quotes.deleteConfirmTitle')}</AlertDialogTitle>
+              <AlertDialogDescription>{t('quotes.deleteConfirmDesc')}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <Button variant="outline" onClick={() => setDeletingQuote(null)}>
-                Vazgeç
+                {t('quotes.cancel')}
               </Button>
               <Button
                 variant="destructive"
@@ -588,11 +651,11 @@ export function QuotesPage() {
                   if (!deletingQuote) return
                   try {
                     await deleteQuote.mutateAsync({ id: deletingQuote.id, itemName: deletingQuote.quote_number })
-                    toast({ title: 'Teklif silindi' })
+                    toast({ title: t('quotes.quoteDeleted') })
                   } catch (e: any) {
                     toast({
-                      title: 'Silme işlemi başarısız',
-                      description: e?.message || 'Bilinmeyen hata',
+                      title: t('quotes.deleteFailed'),
+                      description: e?.message || t('common.errorOccurred'),
                       variant: 'destructive',
                     })
                   } finally {
@@ -600,7 +663,7 @@ export function QuotesPage() {
                   }
                 }}
               >
-                Sil
+                {t('quotes.delete')}
               </Button>
             </AlertDialogFooter>
           </AlertDialogContent>

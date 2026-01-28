@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Eye, EyeOff } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -7,7 +8,24 @@ import { Label } from '../components/ui/label'
 import { toast } from '../components/ui/use-toast'
 import { supabase } from '../lib/supabase'
 
+const createErrorMessage = (fallback: string) => (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message
+  }
+  if (typeof error === 'string') {
+    return error
+  }
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = (error as { message?: unknown }).message
+    if (typeof message === 'string') {
+      return message
+    }
+  }
+  return fallback
+}
+
 export function UpdatePassword() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [ready, setReady] = useState(false)
   const [checkingSession, setCheckingSession] = useState(true)
@@ -15,6 +33,8 @@ export function UpdatePassword() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
+
+  const getErrorMessage = useCallback(createErrorMessage(t('common.unexpectedError')), [t])
 
   useEffect(() => {
     let cancelled = false
@@ -63,8 +83,8 @@ export function UpdatePassword() {
 
         setCheckingSession(false)
         toast({
-          title: 'Geçersiz veya süresi dolmuş bağlantı',
-          description: 'Lütfen tekrar şifre sıfırlama isteği oluşturun.',
+          title: t('auth.invalidOrExpiredLink'),
+          description: t('auth.pleaseRequestPasswordReset'),
           variant: 'destructive',
         })
         navigate('/login', { replace: true })
@@ -78,15 +98,15 @@ export function UpdatePassword() {
       if (timeoutId) clearTimeout(timeoutId)
       subscription?.unsubscribe()
     }
-  }, [navigate])
+  }, [navigate, t])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!ready) {
       toast({
-        title: 'Oturum doğrulanıyor',
-        description: 'Lütfen birkaç saniye sonra tekrar deneyin.',
+        title: t('auth.verifyingSession'),
+        description: t('auth.pleaseTryAgainInFewSeconds'),
         variant: 'destructive',
       })
       return
@@ -97,8 +117,8 @@ export function UpdatePassword() {
 
     if (!p1 || !p2) {
       toast({
-        title: 'Şifre güncellenemedi',
-        description: 'Lütfen tüm alanları doldurun',
+        title: t('auth.passwordUpdateFailed'),
+        description: t('auth.pleaseFillAllFields'),
         variant: 'destructive',
       })
       return
@@ -106,8 +126,8 @@ export function UpdatePassword() {
 
     if (p1 !== p2) {
       toast({
-        title: 'Şifre güncellenemedi',
-        description: 'Şifreler eşleşmiyor',
+        title: t('auth.passwordUpdateFailed'),
+        description: t('auth.passwordsDoNotMatch'),
         variant: 'destructive',
       })
       return
@@ -118,12 +138,12 @@ export function UpdatePassword() {
       const { error } = await supabase.auth.updateUser({ password: p1 })
       if (error) throw error
 
-      toast({ title: 'Şifreniz başarıyla güncellendi' })
+      toast({ title: t('auth.passwordUpdatedSuccessfully') })
       navigate('/login')
-    } catch (err: any) {
+    } catch (error) {
       toast({
-        title: 'Şifre güncellenemedi',
-        description: err?.message,
+        title: t('auth.passwordUpdateFailed'),
+        description: getErrorMessage(error),
         variant: 'destructive',
       })
     } finally {

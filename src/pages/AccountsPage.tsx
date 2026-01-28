@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AppLayout } from '../components/layout/AppLayout'
 import { AccountForm } from '../components/forms/AccountForm'
 import { Button } from '../components/ui/button'
@@ -18,14 +19,15 @@ import { toast } from '../components/ui/use-toast'
 import { useAccounts, useDeleteAccount } from '../hooks/useSupabaseQuery'
 import type { Database } from '../types/database'
 import { Pencil, Plus, Trash2, Wallet } from 'lucide-react'
+import { usePermissions } from '../contexts/PermissionsContext'
 
 type AccountRow = Database['public']['Tables']['accounts']['Row']
 
-const typeLabels: Record<AccountRow['type'], string> = {
-  bank: 'Banka',
-  cash: 'Kasa',
-  credit_card: 'Kredi Kartı',
-}
+const getTypeLabels = (t: (key: string) => string): Record<AccountRow['type'], string> => ({
+  bank: t('accounts.bank'),
+  cash: t('accounts.cash'),
+  credit_card: t('accounts.creditCard'),
+})
 
 const currencySymbols: Record<AccountRow['currency'], string> = {
   TRY: '₺',
@@ -34,11 +36,33 @@ const currencySymbols: Record<AccountRow['currency'], string> = {
 }
 
 export function AccountsPage() {
+  const { t, i18n } = useTranslation()
+  const typeLabels = useMemo(() => getTypeLabels(t), [t])
   const [open, setOpen] = useState(false)
   const [editingAccount, setEditingAccount] = useState<AccountRow | null>(null)
   const [deletingAccount, setDeletingAccount] = useState<AccountRow | null>(null)
   const accountsQuery = useAccounts()
   const deleteAccount = useDeleteAccount()
+  const { loading: permissionsLoading, canViewModule, canEditModule } = usePermissions()
+  const canViewAccounts = canViewModule('accounts')
+  const canEditAccounts = canEditModule('accounts')
+  const numberLocale = useMemo(() => (i18n.language?.startsWith('tr') ? 'tr-TR' : 'en-US'), [i18n.language])
+
+  const showEditDenied = useCallback(() => {
+    toast({
+      title: t('errors.unauthorized'),
+      description: t('accounts.noPermission'),
+      variant: 'destructive',
+    })
+  }, [t])
+
+  const ensureCanEdit = useCallback(() => {
+    if (!canEditAccounts) {
+      showEditDenied()
+      return false
+    }
+    return true
+  }, [canEditAccounts, showEditDenied])
 
   const accounts = accountsQuery.data ?? []
 
@@ -52,16 +76,37 @@ export function AccountsPage() {
     )
   }, [accounts])
 
+  if (permissionsLoading) {
+    return (
+      <AppLayout title={t('nav.accounts')}>
+        <div className="flex h-[60vh] items-center justify-center">
+          <div className="text-sm text-muted-foreground">{t('common.loading')}</div>
+        </div>
+      </AppLayout>
+    )
+  }
+
+  if (!canViewAccounts) {
+    return (
+      <AppLayout title={t('nav.accounts')}>
+        <div className="flex h-[60vh] flex-col items-center justify-center gap-3 text-center">
+          <div className="text-2xl font-semibold">{t('accounts.noAccess')}</div>
+          <p className="max-w-md text-muted-foreground">
+            {t('accounts.noAccessDescription')}
+          </p>
+        </div>
+      </AppLayout>
+    )
+  }
+
   return (
-    <AppLayout title="Kasa ve Banka Hesapları">
+    <AppLayout title={t('accounts.pageTitle')}>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-semibold">Kasa ve Banka Hesapları</h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              Nakit ve banka hesaplarınızı yönetin
-            </p>
+            <h2 className="text-2xl font-semibold">{t('accounts.pageTitle')}</h2>
+            <p className="text-sm text-muted-foreground mt-1">{t('accounts.pageDescription')}</p>
           </div>
           <Dialog
             open={open}
@@ -72,17 +117,19 @@ export function AccountsPage() {
           >
             <DialogTrigger asChild>
               <Button
+                disabled={!canEditAccounts}
                 onClick={() => {
+                  if (!ensureCanEdit()) return
                   setEditingAccount(null)
                 }}
               >
                 <Plus className="mr-2 h-4 w-4" />
-                Hesap Ekle
+                {t('accounts.newAccount')}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>{editingAccount ? 'Hesabı Düzenle' : 'Yeni Hesap'}</DialogTitle>
+                <DialogTitle>{editingAccount ? t('accounts.editAccount') : t('accounts.newAccount')}</DialogTitle>
               </DialogHeader>
               <AccountForm
                 initialAccount={editingAccount ?? undefined}
@@ -90,7 +137,7 @@ export function AccountsPage() {
                   setOpen(false)
                   setEditingAccount(null)
                   toast({
-                    title: editingAccount ? 'Hesap güncellendi' : 'Hesap oluşturuldu',
+                    title: editingAccount ? t('accounts.accountUpdated') : t('accounts.accountCreated'),
                   })
                 }}
               />
@@ -103,22 +150,22 @@ export function AccountsPage() {
           {(['TRY', 'USD', 'EUR'] as const).map((currency) => (
             <Card key={currency}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Toplam ({currency})</CardTitle>
+                <CardTitle className="text-sm font-medium">{t('accounts.totals.title', { currency })}</CardTitle>
                 <Wallet className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
                   {currencySymbols[currency]}
-                  {totalsByCurrency[currency].toLocaleString('tr-TR', { maximumFractionDigits: 2 })}
+                  {totalsByCurrency[currency].toLocaleString(numberLocale, { maximumFractionDigits: 2 })}
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">Tüm hesapların toplamı</p>
+                <p className="text-xs text-muted-foreground mt-1">{t('accounts.totals.subtitle')}</p>
               </CardContent>
             </Card>
           ))}
         </div>
 
         <div className="pt-2">
-          <h2 className="text-xl font-semibold mb-4 mt-2">Hesap Listesi</h2>
+          <h2 className="text-xl font-semibold mb-4 mt-2">{t('accounts.accountList')}</h2>
           <Separator />
         </div>
 
@@ -142,7 +189,7 @@ export function AccountsPage() {
           <Card className="border-destructive/50">
             <CardContent className="py-10">
               <p className="text-sm text-destructive">
-                {(accountsQuery.error as any)?.message || 'Hesaplar yüklenemedi'}
+                {(accountsQuery.error as any)?.message || t('accounts.loadingError')}
               </p>
             </CardContent>
           </Card>
@@ -155,13 +202,19 @@ export function AccountsPage() {
               <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4">
                 <Wallet className="h-8 w-8 text-muted-foreground" />
               </div>
-              <h3 className="text-lg font-semibold mb-2">Henüz hesap eklenmedi</h3>
+              <h3 className="text-lg font-semibold mb-2">{t('accounts.emptyStateTitle')}</h3>
               <p className="text-sm text-muted-foreground text-center mb-6 max-w-sm">
-                İlk hesabınızı ekleyerek kasa ve banka hesaplarınızı takip etmeye başlayın.
+                {t('accounts.emptyStateDescription')}
               </p>
-              <Button onClick={() => setOpen(true)}>
+              <Button
+                disabled={!canEditAccounts}
+                onClick={() => {
+                  if (!ensureCanEdit()) return
+                  setOpen(true)
+                }}
+              >
                 <Plus className="mr-2 h-4 w-4" />
-                İlk Hesabınızı Ekleyin
+                {t('accounts.emptyStateAction')}
               </Button>
             </CardContent>
           </Card>
@@ -178,7 +231,7 @@ export function AccountsPage() {
                 <CardContent>
                   <div className="text-2xl font-bold">
                     {currencySymbols[account.currency]}
-                    {Number(account.balance ?? 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 })}
+                    {Number(account.balance ?? 0).toLocaleString(numberLocale, { maximumFractionDigits: 2 })}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
                     {typeLabels[account.type]}
@@ -188,22 +241,27 @@ export function AccountsPage() {
                       variant="outline"
                       size="sm"
                       className="flex-1"
+                      disabled={!canEditAccounts}
                       onClick={() => {
+                        if (!ensureCanEdit()) return
                         setEditingAccount(account)
                         setOpen(true)
                       }}
                     >
                       <Pencil className="mr-2 h-4 w-4" />
-                      Düzenle
+                      {t('common.edit')}
                     </Button>
                     <Button
                       variant="destructive"
+                      disabled={!canEditAccounts}
                       size="sm"
-                      className="flex-1"
-                      onClick={() => setDeletingAccount(account)}
+                      onClick={() => {
+                        if (!ensureCanEdit()) return
+                        setDeletingAccount(account)
+                      }}
                     >
                       <Trash2 className="mr-2 h-4 w-4" />
-                      Sil
+                      {t('common.delete')}
                     </Button>
                   </div>
                 </CardContent>
@@ -220,14 +278,12 @@ export function AccountsPage() {
         >
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Silme Onayı</AlertDialogTitle>
-              <AlertDialogDescription>
-                Bu kaydı silmek istediğinize emin misiniz? Bu işlem geri alınamaz.
-              </AlertDialogDescription>
+              <AlertDialogTitle>{t('common.deleteConfirm')}</AlertDialogTitle>
+              <AlertDialogDescription>{t('common.deleteWarning')}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <Button variant="outline" onClick={() => setDeletingAccount(null)}>
-                Vazgeç
+                {t('common.cancel')}
               </Button>
               <Button
                 variant="destructive"
@@ -239,10 +295,10 @@ export function AccountsPage() {
                       id: deletingAccount.id,
                       itemName: deletingAccount.name,
                     })
-                    toast({ title: 'Hesap silindi' })
+                    toast({ title: t('accounts.accountDeleted') })
                   } catch (e: any) {
                     toast({
-                      title: 'Silme işlemi başarısız',
+                      title: t('accounts.deleteFailed'),
                       description: e?.message,
                       variant: 'destructive',
                     })
@@ -251,7 +307,7 @@ export function AccountsPage() {
                   }
                 }}
               >
-                Sil
+                {t('common.delete')}
               </Button>
             </AlertDialogFooter>
           </AlertDialogContent>

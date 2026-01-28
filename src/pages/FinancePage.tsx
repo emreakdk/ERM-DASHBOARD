@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AppLayout } from '../components/layout/AppLayout'
 import { TransactionForm } from '../components/forms/TransactionForm'
 import {
@@ -22,6 +22,7 @@ import { useAccounts, useCustomers, useDeleteTransaction, useTransactionsByDateR
 import { formatCurrency, formatShortDate } from '../lib/format'
 import { cn } from '../lib/utils'
 import type { Database } from '../types/database'
+import { usePermissions } from '../contexts/PermissionsContext'
 import {
   endOfMonth,
   endOfWeek,
@@ -32,9 +33,10 @@ import {
   startOfYear,
   subMonths,
 } from 'date-fns'
-import { tr } from 'date-fns/locale'
+import { enUS, tr } from 'date-fns/locale'
 import { Calendar as CalendarIcon, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 
 type TransactionRow = Database['public']['Tables']['transactions']['Row']
 
@@ -52,6 +54,29 @@ export function FinancePage() {
   const [deletingTransaction, setDeletingTransaction] = useState<TransactionRow | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined)
+  const { loading: permissionsLoading, canViewModule, canEditModule } = usePermissions()
+  const canViewFinance = canViewModule('finance')
+  const canEditFinance = canEditModule('finance')
+  const { t, i18n } = useTranslation()
+
+  const dateLocale = useMemo(() => (i18n.language?.startsWith('tr') ? tr : enUS), [i18n.language])
+  const numberLocale = useMemo(() => (i18n.language?.startsWith('tr') ? 'tr-TR' : 'en-US'), [i18n.language])
+
+  const showEditDenied = useCallback(() => {
+    toast({
+      title: t('finance.permissionDeniedTitle'),
+      description: t('finance.permissionDeniedDescription'),
+      variant: 'destructive',
+    })
+  }, [t])
+
+  const ensureCanEdit = useCallback(() => {
+    if (!canEditFinance) {
+      showEditDenied()
+      return false
+    }
+    return true
+  }, [canEditFinance, showEditDenied])
 
   const dateFromStr = useMemo(() => {
     return dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : undefined
@@ -62,11 +87,11 @@ export function FinancePage() {
   }, [dateRange?.to])
 
   const dateRangeLabel = useMemo(() => {
-    if (!dateRange?.from || !dateRange?.to) return 'Tarih Aralığı'
-    const from = format(dateRange.from, 'd MMM', { locale: tr })
-    const to = format(dateRange.to, 'd MMM', { locale: tr })
+    if (!dateRange?.from || !dateRange?.to) return t('finance.dateRange.label')
+    const from = format(dateRange.from, 'd MMM', { locale: dateLocale })
+    const to = format(dateRange.to, 'd MMM', { locale: dateLocale })
     return `${from} - ${to}`
-  }, [dateRange?.from, dateRange?.to])
+  }, [dateLocale, dateRange?.from, dateRange?.to, t])
 
   const transactionsQuery = useTransactionsByDateRange({ from: dateFromStr, to: dateToStr })
   const customersQuery = useCustomers()
@@ -109,6 +134,14 @@ export function FinancePage() {
     if (!editIdParam) return
     if (open && editingTransaction?.id === editIdParam) return
 
+    if (!canEditFinance) {
+      showEditDenied()
+      const next = new URLSearchParams(searchParams)
+      next.delete('editId')
+      setSearchParams(next, { replace: true })
+      return
+    }
+
     const match = transactions.find((t) => t.id === editIdParam)
     if (match) {
       setEditingTransaction(match)
@@ -118,38 +151,57 @@ export function FinancePage() {
 
     if (!transactionsQuery.isLoading && !transactionsQuery.isFetching) {
       toast({
-        title: 'İşlem bulunamadı',
-        description: 'Seçilen işlem bulunamadı veya erişiminiz yok.',
+        title: t('finance.transactionNotFoundTitle'),
+        description: t('finance.transactionNotFoundDescription'),
         variant: 'destructive',
       })
       const next = new URLSearchParams(searchParams)
       next.delete('editId')
       setSearchParams(next, { replace: true })
     }
-  }, [editIdParam, editingTransaction?.id, open, searchParams, setSearchParams, transactions, transactionsQuery.isFetching, transactionsQuery.isLoading])
+  }, [editIdParam, editingTransaction?.id, open, searchParams, setSearchParams, transactions, transactionsQuery.isFetching, transactionsQuery.isLoading, canEditFinance, showEditDenied])
+
+  if (permissionsLoading) {
+    return (
+      <AppLayout title={t('finance.pageTitle')}>
+        <div className="flex h-[60vh] items-center justify-center">
+          <div className="text-sm text-muted-foreground">{t('finance.loadingPermissions')}</div>
+        </div>
+      </AppLayout>
+    )
+  }
+
+  if (!canViewFinance) {
+    return (
+      <AppLayout title={t('finance.pageTitle')}>
+        <div className="flex h-[60vh] flex-col items-center justify-center gap-3 text-center">
+          <div className="text-2xl font-semibold">{t('finance.noAccessTitle')}</div>
+          <p className="max-w-md text-muted-foreground">{t('finance.noAccessDescription')}</p>
+        </div>
+      </AppLayout>
+    )
+  }
 
   return (
-    <AppLayout title="Finans">
+    <AppLayout title={t('finance.pageTitle')}>
       <div className="space-y-6">
         {/* Header */}
         <div>
-          <h2 className="text-2xl font-semibold">Finans</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Gelir ve gider işlemlerinizi yönetin
-          </p>
+          <h2 className="text-2xl font-semibold">{t('finance.pageTitle')}</h2>
+          <p className="text-sm text-muted-foreground mt-1">{t('finance.pageDescription')}</p>
         </div>
 
         {/* Table */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-3">
-            <CardTitle className="whitespace-nowrap">İşlemler</CardTitle>
+            <CardTitle className="whitespace-nowrap">{t('finance.transactions')}</CardTitle>
             <div className="flex flex-1 min-w-0 items-center justify-end gap-2">
               <div className="relative w-full max-w-sm min-w-0">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Açıklama, kategori veya hesap ara..."
+                  placeholder={t('finance.searchPlaceholder')}
                   className="pl-9"
                 />
               </div>
@@ -171,7 +223,7 @@ export function FinancePage() {
                 <PopoverContent align="end" className="w-auto p-3">
                   <div className="flex flex-wrap gap-2 pb-3">
                     <Button type="button" variant="ghost" size="sm" onClick={() => setDateRange({ from: now, to: now })}>
-                      Bugün
+                      {t('finance.dateRange.today')}
                     </Button>
                     <Button
                       type="button"
@@ -184,7 +236,7 @@ export function FinancePage() {
                         })
                       }
                     >
-                      Bu Hafta
+                      {t('finance.dateRange.thisWeek')}
                     </Button>
                     <Button
                       type="button"
@@ -192,7 +244,7 @@ export function FinancePage() {
                       size="sm"
                       onClick={() => setDateRange({ from: startOfMonth(now), to: endOfMonth(now) })}
                     >
-                      Bu Ay
+                      {t('finance.dateRange.thisMonth')}
                     </Button>
                     <Button
                       type="button"
@@ -203,7 +255,7 @@ export function FinancePage() {
                         setDateRange({ from: startOfMonth(prev), to: endOfMonth(prev) })
                       }}
                     >
-                      Geçen Ay
+                      {t('finance.dateRange.lastMonth')}
                     </Button>
                     <Button
                       type="button"
@@ -211,19 +263,19 @@ export function FinancePage() {
                       size="sm"
                       onClick={() => setDateRange({ from: startOfYear(now), to: endOfYear(now) })}
                     >
-                      Bu Yıl
+                      {t('finance.dateRange.thisYear')}
                     </Button>
                     <Button type="button" variant="ghost" size="sm" onClick={() => setDateRange(undefined)}>
-                      Temizle
+                      {t('finance.dateRange.clear')}
                     </Button>
                   </div>
 
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
-                      <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">Başlangıç</div>
+                      <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">{t('finance.dateRange.start')}</div>
                       <Calendar
                         selected={dateRange?.from}
-                        locale={tr}
+                        locale={dateLocale}
                         onSelect={(d) => {
                           if (!d) return
                           setDateRange((prev) => {
@@ -235,10 +287,10 @@ export function FinancePage() {
                       />
                     </div>
                     <div>
-                      <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">Bitiş</div>
+                      <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">{t('finance.dateRange.end')}</div>
                       <Calendar
                         selected={dateRange?.to}
-                        locale={tr}
+                        locale={dateLocale}
                         onSelect={(d) => {
                           if (!d) return
                           setDateRange((prev) => {
@@ -268,24 +320,28 @@ export function FinancePage() {
                 }}
               >
                 <Button
+                  disabled={!canEditFinance}
                   onClick={() => {
+                    if (!ensureCanEdit()) return
                     setEditingTransaction(null)
                     setOpen(true)
                   }}
                 >
                   <Plus className="mr-2 h-4 w-4" />
-                  Yeni İşlem Ekle
+                  {t('finance.addTransaction')}
                 </Button>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>{editingTransaction ? 'İşlemi Düzenle' : 'Yeni İşlem'}</DialogTitle>
+                    <DialogTitle>
+                      {editingTransaction ? t('finance.editTransaction') : t('finance.newTransaction')}
+                    </DialogTitle>
                   </DialogHeader>
                   <TransactionForm
                     initialTransaction={editingTransaction ?? undefined}
                     onSuccess={() => {
                       setOpen(false)
                       toast({
-                        title: editingTransaction ? 'İşlem güncellendi' : 'İşlem oluşturuldu',
+                        title: editingTransaction ? t('finance.transactionUpdated') : t('finance.transactionCreated'),
                       })
                       setEditingTransaction(null)
                       if (searchParams.get('editId')) {
@@ -308,7 +364,7 @@ export function FinancePage() {
               </div>
             ) : transactionsQuery.isError ? (
               <p className="text-sm text-destructive">
-                {(transactionsQuery.error as any)?.message || 'İşlemler yüklenemedi'}
+                {(transactionsQuery.error as any)?.message || t('finance.loadFailed')}
               </p>
             ) : (
               <div className="rounded-md border">
@@ -316,25 +372,25 @@ export function FinancePage() {
                   <thead>
                     <tr className="border-b bg-muted/50">
                       <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
-                        Tarih
+                        {t('finance.table.date')}
                       </th>
                       <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
-                        Tür
+                        {t('finance.table.type')}
                       </th>
                       <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
-                        Kategori
+                        {t('finance.table.category')}
                       </th>
                       <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
-                        Hesap
+                        {t('finance.table.account')}
                       </th>
                       <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
-                        Müşteri
+                        {t('finance.table.customer')}
                       </th>
                       <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
-                        Tutar
+                        {t('finance.table.amount')}
                       </th>
                       <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
-                        İşlem
+                        {t('finance.table.actions')}
                       </th>
                     </tr>
                   </thead>
@@ -342,50 +398,54 @@ export function FinancePage() {
                     {filteredTransactions.length === 0 ? (
                       <tr>
                         <td colSpan={7} className="h-32 text-center">
-                          <p className="text-sm text-muted-foreground">
-                            Henüz işlem bulunamadı.
-                          </p>
+                          <p className="text-sm text-muted-foreground">{t('finance.emptyState')}</p>
                         </td>
                       </tr>
                     ) : (
-                      filteredTransactions.map((t) => {
-                        const customer = t.customer_id ? customersById.get(t.customer_id) : undefined
-                        const account = t.bank_account ? accountsById.get(t.bank_account) : undefined
+                      filteredTransactions.map((txn) => {
+                        const customer = txn.customer_id ? customersById.get(txn.customer_id) : undefined
+                        const account = txn.bank_account ? accountsById.get(txn.bank_account) : undefined
                         return (
-                          <tr key={t.id} className="border-b">
-                            <td className="p-4">{formatShortDate(t.transaction_date)}</td>
+                          <tr key={txn.id} className="border-b">
+                            <td className="p-4">{formatShortDate(txn.transaction_date)}</td>
                             <td className="p-4">
                               <Badge
-                                variant={t.type === 'expense' ? 'destructive' : 'default'}
-                                className={t.type === 'income' ? 'bg-emerald-500 hover:bg-emerald-500/90 text-white border-transparent' : undefined}
+                                variant={txn.type === 'expense' ? 'destructive' : 'default'}
+                                className={txn.type === 'income' ? 'bg-emerald-500 hover:bg-emerald-500/90 text-white border-transparent' : undefined}
                               >
-                                {t.type === 'income' ? 'Gelir' : 'Gider'}
+                                {txn.type === 'income' ? t('finance.income') : t('finance.expense')}
                               </Badge>
                             </td>
-                            <td className="p-4">{t.category}</td>
+                            <td className="p-4">{txn.category}</td>
                             <td className="p-4">{account?.name || '-'}</td>
                             <td className="p-4">{customer?.name || '-'}</td>
-                            <td className="p-4 text-right font-medium">{formatCurrency(Number(t.amount))}</td>
+                            <td className="p-4 text-right font-medium">{formatCurrency(Number(txn.amount))}</td>
                             <td className="p-4 text-right">
                               <div className="flex justify-end gap-2">
                                 <Button
                                   variant="outline"
                                   size="sm"
+                                  disabled={!canEditFinance}
                                   onClick={() => {
-                                    setEditingTransaction(t)
+                                    if (!ensureCanEdit()) return
+                                    setEditingTransaction(txn)
                                     setOpen(true)
                                   }}
                                 >
                                   <Pencil className="mr-2 h-4 w-4" />
-                                  Düzenle
+                                  {t('common.edit')}
                                 </Button>
                                 <Button
                                   variant="destructive"
                                   size="sm"
-                                  onClick={() => setDeletingTransaction(t)}
+                                  disabled={!canEditFinance}
+                                  onClick={() => {
+                                    if (!ensureCanEdit()) return
+                                    setDeletingTransaction(txn)
+                                  }}
                                 >
                                   <Trash2 className="mr-2 h-4 w-4" />
-                                  Sil
+                                  {t('common.delete')}
                                 </Button>
                               </div>
                             </td>
@@ -408,14 +468,12 @@ export function FinancePage() {
         >
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Silme Onayı</AlertDialogTitle>
-              <AlertDialogDescription>
-                Bu kaydı silmek istediğinize emin misiniz? Bu işlem geri alınamaz.
-              </AlertDialogDescription>
+              <AlertDialogTitle>{t('common.deleteConfirm')}</AlertDialogTitle>
+              <AlertDialogDescription>{t('common.deleteWarning')}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <Button variant="outline" onClick={() => setDeletingTransaction(null)}>
-                Vazgeç
+                {t('common.cancel')}
               </Button>
               <Button
                 variant="destructive"
@@ -425,12 +483,12 @@ export function FinancePage() {
                   try {
                     await deleteTransaction.mutateAsync({
                       id: deletingTransaction.id,
-                      itemName: `${deletingTransaction.category} (${Number(deletingTransaction.amount).toLocaleString('tr-TR')} TL)`,
+                      itemName: `${deletingTransaction.category} (${Number(deletingTransaction.amount).toLocaleString(numberLocale)} TRY)`,
                     })
-                    toast({ title: 'İşlem silindi' })
+                    toast({ title: t('finance.transactionDeleted') })
                   } catch (e: any) {
                     toast({
-                      title: 'Silme işlemi başarısız',
+                      title: t('finance.transactionDeleteFailed'),
                       description: e?.message,
                       variant: 'destructive',
                     })
@@ -439,7 +497,7 @@ export function FinancePage() {
                   }
                 }}
               >
-                Sil
+                {t('common.delete')}
               </Button>
             </AlertDialogFooter>
           </AlertDialogContent>

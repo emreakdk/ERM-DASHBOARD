@@ -5,42 +5,50 @@ import { useForm } from 'react-hook-form'
 
 import { useAuth } from '../../contexts/AuthContext'
 import { useCreateCustomer, useUpdateCustomer } from '../../hooks/useSupabaseQuery'
+import { useQuotaGuard } from '../../hooks/useQuotaGuard'
 import type { Database } from '../../types/database'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Label } from '../ui/label'
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs'
+import { useToast } from '../ui/use-toast'
+import { useTranslation } from 'react-i18next'
 
-const customerSchema = z
-  .object({
-    kind: z.enum(['individual', 'corporate']),
-    firstName: z.string().optional(),
-    lastName: z.string().optional(),
-    companyName: z.string().optional(),
-    taxNumber: z.string().optional(),
-    taxOffice: z.string().optional(),
-    contactPerson: z.string().optional(),
-    phone: z.string().optional(),
-    email: z.string().email('Geçerli bir e-posta girin').optional().or(z.literal('')),
-  })
-  .superRefine((val, ctx) => {
-    if (val.kind === 'individual') {
-      if (!val.firstName || val.firstName.trim().length === 0) {
-        ctx.addIssue({ code: 'custom', message: 'Ad zorunludur', path: ['firstName'] })
+const buildCustomerSchema = (t: (key: string) => string) =>
+  z
+    .object({
+      kind: z.enum(['individual', 'corporate']),
+      firstName: z.string().optional(),
+      lastName: z.string().optional(),
+      companyName: z.string().optional(),
+      taxNumber: z.string().optional(),
+      taxOffice: z.string().optional(),
+      contactPerson: z.string().optional(),
+      phone: z.string().optional(),
+      email: z
+        .string()
+        .email(t('customers.form.errors.emailInvalid'))
+        .optional()
+        .or(z.literal('')),
+    })
+    .superRefine((val, ctx) => {
+      if (val.kind === 'individual') {
+        if (!val.firstName || val.firstName.trim().length === 0) {
+          ctx.addIssue({ code: 'custom', message: t('customers.form.errors.firstNameRequired'), path: ['firstName'] })
+        }
+        if (!val.lastName || val.lastName.trim().length === 0) {
+          ctx.addIssue({ code: 'custom', message: t('customers.form.errors.lastNameRequired'), path: ['lastName'] })
+        }
       }
-      if (!val.lastName || val.lastName.trim().length === 0) {
-        ctx.addIssue({ code: 'custom', message: 'Soyad zorunludur', path: ['lastName'] })
-      }
-    }
 
-    if (val.kind === 'corporate') {
-      if (!val.companyName || val.companyName.trim().length === 0) {
-        ctx.addIssue({ code: 'custom', message: 'Şirket adı zorunludur', path: ['companyName'] })
+      if (val.kind === 'corporate') {
+        if (!val.companyName || val.companyName.trim().length === 0) {
+          ctx.addIssue({ code: 'custom', message: t('customers.form.errors.companyNameRequired'), path: ['companyName'] })
+        }
       }
-    }
-  })
+    })
 
-type CustomerFormValues = z.infer<typeof customerSchema>
+type CustomerFormValues = z.infer<ReturnType<typeof buildCustomerSchema>>
 
 type CustomerFormProps = {
   initialCustomer?: Database['public']['Tables']['customers']['Row']
@@ -58,9 +66,12 @@ function splitName(fullName: string) {
 }
 
 export function CustomerForm({ initialCustomer, defaultCustomerStatus, onSuccess }: CustomerFormProps) {
+  const { t } = useTranslation()
   const { user } = useAuth()
   const createCustomer = useCreateCustomer()
   const updateCustomer = useUpdateCustomer()
+  const { canPerformAction } = useQuotaGuard()
+  const { toast } = useToast()
 
   const isEditing = Boolean(initialCustomer?.id)
 
@@ -88,6 +99,8 @@ export function CustomerForm({ initialCustomer, defaultCustomerStatus, onSuccess
     [initialCustomer]
   )
 
+  const customerSchema = useMemo(() => buildCustomerSchema(t), [t])
+
   const {
     register,
     handleSubmit,
@@ -107,7 +120,17 @@ export function CustomerForm({ initialCustomer, defaultCustomerStatus, onSuccess
 
   const onSubmit = async (values: CustomerFormValues) => {
     if (!user) return
-
+    if (!isEditing) {
+      const quotaCheck = canPerformAction('ADD_CUSTOMER')
+      if (!quotaCheck.allowed) {
+        toast({
+          title: t('customers.form.quotaLimitTitle'),
+          description: quotaCheck.message || t('customers.form.quotaLimitDescription'),
+          variant: 'destructive',
+        })
+        return
+      }
+    }
     const name =
       values.kind === 'individual'
         ? `${values.firstName?.trim() ?? ''} ${values.lastName?.trim() ?? ''}`.trim()
@@ -156,23 +179,23 @@ export function CustomerForm({ initialCustomer, defaultCustomerStatus, onSuccess
         }}
       >
         <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="individual">Bireysel</TabsTrigger>
-          <TabsTrigger value="corporate">Kurumsal</TabsTrigger>
+          <TabsTrigger value="individual">{t('customers.form.individualTab')}</TabsTrigger>
+          <TabsTrigger value="corporate">{t('customers.form.corporateTab')}</TabsTrigger>
         </TabsList>
       </Tabs>
 
       {kind === 'individual' ? (
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="firstName">Ad</Label>
-            <Input id="firstName" placeholder="Ad" {...register('firstName')} />
+            <Label htmlFor="firstName">{t('customers.form.firstNameLabel')}</Label>
+            <Input id="firstName" placeholder={t('customers.form.firstNamePlaceholder')} {...register('firstName')} />
             {errors.firstName && (
               <p className="text-sm text-destructive">{errors.firstName.message}</p>
             )}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="lastName">Soyad</Label>
-            <Input id="lastName" placeholder="Soyad" {...register('lastName')} />
+            <Label htmlFor="lastName">{t('customers.form.lastNameLabel')}</Label>
+            <Input id="lastName" placeholder={t('customers.form.lastNamePlaceholder')} {...register('lastName')} />
             {errors.lastName && (
               <p className="text-sm text-destructive">{errors.lastName.message}</p>
             )}
@@ -181,23 +204,31 @@ export function CustomerForm({ initialCustomer, defaultCustomerStatus, onSuccess
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="companyName">Şirket Adı</Label>
-            <Input id="companyName" placeholder="Şirket Adı" {...register('companyName')} />
+            <Label htmlFor="companyName">{t('customers.form.companyNameLabel')}</Label>
+            <Input
+              id="companyName"
+              placeholder={t('customers.form.companyNamePlaceholder')}
+              {...register('companyName')}
+            />
             {errors.companyName && (
               <p className="text-sm text-destructive">{errors.companyName.message}</p>
             )}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="contactPerson">Yetkili Kişi</Label>
-            <Input id="contactPerson" placeholder="Yetkili Kişi" {...register('contactPerson')} />
+            <Label htmlFor="contactPerson">{t('customers.form.contactPersonLabel')}</Label>
+            <Input
+              id="contactPerson"
+              placeholder={t('customers.form.contactPersonPlaceholder')}
+              {...register('contactPerson')}
+            />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="taxOffice">Vergi Dairesi</Label>
-            <Input id="taxOffice" placeholder="Vergi Dairesi" {...register('taxOffice')} />
+            <Label htmlFor="taxOffice">{t('customers.form.taxOfficeLabel')}</Label>
+            <Input id="taxOffice" placeholder={t('customers.form.taxOfficePlaceholder')} {...register('taxOffice')} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="taxNumber">Vergi No (VKN)</Label>
-            <Input id="taxNumber" placeholder="Vergi No" {...register('taxNumber')} />
+            <Label htmlFor="taxNumber">{t('customers.form.taxNumberLabel')}</Label>
+            <Input id="taxNumber" placeholder={t('customers.form.taxNumberPlaceholder')} {...register('taxNumber')} />
             {errors.taxNumber && (
               <p className="text-sm text-destructive">{errors.taxNumber.message}</p>
             )}
@@ -207,12 +238,12 @@ export function CustomerForm({ initialCustomer, defaultCustomerStatus, onSuccess
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="phone">Telefon</Label>
-          <Input id="phone" placeholder="+90 (5XX) XXX XX XX" {...register('phone')} />
+          <Label htmlFor="phone">{t('customers.form.phoneLabel')}</Label>
+          <Input id="phone" placeholder={t('customers.form.phonePlaceholder')} {...register('phone')} />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="email">E-posta</Label>
-          <Input id="email" type="email" placeholder="ornek@firma.com" {...register('email')} />
+          <Label htmlFor="email">{t('customers.form.emailLabel')}</Label>
+          <Input id="email" type="email" placeholder={t('customers.form.emailPlaceholder')} {...register('email')} />
           {errors.email && (
             <p className="text-sm text-destructive">{errors.email.message}</p>
           )}
@@ -222,7 +253,7 @@ export function CustomerForm({ initialCustomer, defaultCustomerStatus, onSuccess
       {(createCustomer.error || updateCustomer.error) && (
         <p className="text-sm text-destructive">
           {((createCustomer.error || updateCustomer.error) as any)?.message ||
-            (isEditing ? 'Müşteri güncellenemedi' : 'Müşteri oluşturulamadı')}
+            (isEditing ? t('customers.form.updateError') : t('customers.form.createError'))}
         </p>
       )}
 
@@ -231,7 +262,7 @@ export function CustomerForm({ initialCustomer, defaultCustomerStatus, onSuccess
           type="submit"
           disabled={createCustomer.isPending || updateCustomer.isPending || !user}
         >
-          Kaydet
+          {t('customers.form.submitButton')}
         </Button>
       </div>
     </form>

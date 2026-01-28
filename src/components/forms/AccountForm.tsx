@@ -16,15 +16,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select'
+import { useTranslation } from 'react-i18next'
 
-const accountSchema = z.object({
-  name: z.string().min(1, 'Hesap adı zorunludur'),
-  type: z.enum(['bank', 'cash', 'credit_card']),
-  currency: z.enum(['TRY', 'USD', 'EUR']),
-  balance: z.number().finite(),
-})
+const createAccountSchema = (t: (key: string) => string) =>
+  z.object({
+    name: z.string().min(1, t('accounts.form.validation.nameRequired')),
+    type: z.enum(['bank', 'cash', 'credit_card']),
+    currency: z.enum(['TRY', 'USD', 'EUR']),
+    balance: z.number({ invalid_type_error: t('accounts.form.validation.balanceNumber') }),
+  })
 
-type AccountFormValues = z.infer<typeof accountSchema>
+type AccountFormValues = z.infer<ReturnType<typeof createAccountSchema>>
 
 type AccountFormProps = {
   initialAccount?: Database['public']['Tables']['accounts']['Row']
@@ -32,9 +34,9 @@ type AccountFormProps = {
 }
 
 const accountTypeOptions = [
-  { value: 'bank' as const, label: 'Banka' },
-  { value: 'cash' as const, label: 'Kasa' },
-  { value: 'credit_card' as const, label: 'Kredi Kartı' },
+  { value: 'bank' as const, labelKey: 'accounts.bank' },
+  { value: 'cash' as const, labelKey: 'accounts.cash' },
+  { value: 'credit_card' as const, labelKey: 'accounts.creditCard' },
 ]
 
 const currencyOptions = [
@@ -44,10 +46,12 @@ const currencyOptions = [
 ]
 
 export function AccountForm({ initialAccount, onSuccess }: AccountFormProps) {
+  const { t } = useTranslation()
   const { user } = useAuth()
   const createAccount = useCreateAccount()
   const updateAccount = useUpdateAccount()
 
+  const accountSchema = useMemo(() => createAccountSchema(t), [t])
   const isEditing = Boolean(initialAccount?.id)
 
   const defaultValues = useMemo<AccountFormValues>(
@@ -104,8 +108,8 @@ export function AccountForm({ initialAccount, onSuccess }: AccountFormProps) {
   return (
     <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
       <div className="space-y-2">
-        <Label htmlFor="name">Hesap Adı</Label>
-        <Input id="name" placeholder="İş Bankası, Ofis Kasa..." {...register('name')} />
+        <Label htmlFor="name">{t('accounts.form.name')}</Label>
+        <Input id="name" placeholder={t('accounts.form.namePlaceholder')} {...register('name')} />
         {errors.name && (
           <p className="text-sm text-destructive">{errors.name.message}</p>
         )}
@@ -113,19 +117,19 @@ export function AccountForm({ initialAccount, onSuccess }: AccountFormProps) {
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
-          <Label>Tür</Label>
+          <Label>{t('accounts.form.type')}</Label>
           <Controller
             control={control}
             name="type"
             render={({ field }) => (
               <Select value={field.value} onValueChange={field.onChange}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Seçiniz" />
+                  <SelectValue placeholder={t('common.selectPlaceholder')} />
                 </SelectTrigger>
                 <SelectContent>
                   {accountTypeOptions.map((opt) => (
                     <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
+                      {t(opt.labelKey)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -138,14 +142,14 @@ export function AccountForm({ initialAccount, onSuccess }: AccountFormProps) {
         </div>
 
         <div className="space-y-2">
-          <Label>Para Birimi</Label>
+          <Label>{t('accounts.form.currency')}</Label>
           <Controller
             control={control}
             name="currency"
             render={({ field }) => (
               <Select value={field.value} onValueChange={field.onChange}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Seçiniz" />
+                  <SelectValue placeholder={t('common.selectPlaceholder')} />
                 </SelectTrigger>
                 <SelectContent>
                   {currencyOptions.map((opt) => (
@@ -164,7 +168,7 @@ export function AccountForm({ initialAccount, onSuccess }: AccountFormProps) {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="balance">Başlangıç Bakiyesi</Label>
+        <Label htmlFor="balance">{t('accounts.form.balance')}</Label>
         <Input
           id="balance"
           type="number"
@@ -180,7 +184,7 @@ export function AccountForm({ initialAccount, onSuccess }: AccountFormProps) {
       {(createAccount.error || updateAccount.error) && (
         <p className="text-sm text-destructive">
           {((createAccount.error || updateAccount.error) as any)?.message ||
-            (isEditing ? 'Hesap güncellenemedi' : 'Hesap oluşturulamadı')}
+            (isEditing ? t('accounts.form.updateFailed') : t('accounts.form.createFailed'))}
         </p>
       )}
 
@@ -189,7 +193,7 @@ export function AccountForm({ initialAccount, onSuccess }: AccountFormProps) {
           type="submit"
           disabled={createAccount.isPending || updateAccount.isPending || !user}
         >
-          Kaydet
+          {t('accounts.form.submit')}
         </Button>
       </div>
     </form>

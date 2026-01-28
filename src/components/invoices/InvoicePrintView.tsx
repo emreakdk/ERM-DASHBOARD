@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { supabase } from '../../lib/supabase'
 import { formatCurrency, formatShortDate } from '../../lib/format'
 import type { Database } from '../../types/database'
@@ -22,6 +23,7 @@ type CompanyProfileRow = {
 }
 
 export function InvoicePrintView({ invoiceId }: { invoiceId: string }) {
+  const { t } = useTranslation()
   const invoiceQuery = useQuery<InvoiceRow | null>({
     queryKey: ['invoice_print', 'invoice', invoiceId],
     enabled: Boolean(invoiceId),
@@ -106,21 +108,21 @@ export function InvoicePrintView({ invoiceId }: { invoiceId: string }) {
 
   if (invoiceQuery.isLoading || itemsQuery.isLoading) {
     return (
-      <div className="flex items-center justify-center py-10 text-sm text-muted-foreground">Yükleniyor...</div>
+      <div className="flex items-center justify-center py-10 text-sm text-muted-foreground">{t('common.loading')}</div>
     )
   }
 
   if (invoiceQuery.isError) {
     return (
-      <div className="py-10 text-sm text-destructive">{(invoiceQuery.error as any)?.message || 'Fatura yüklenemedi'}</div>
+      <div className="py-10 text-sm text-destructive">{(invoiceQuery.error as any)?.message || t('invoices.loadFailed')}</div>
     )
   }
 
   if (!invoice) {
-    return <div className="py-10 text-sm text-muted-foreground">Fatura bulunamadı</div>
+    return <div className="py-10 text-sm text-muted-foreground">{t('invoices.invoiceNotFound')}</div>
   }
 
-  const companyName = companyProfile?.company_name || profile?.company_name || 'Şirket Adı'
+  const companyName = companyProfile?.company_name || profile?.company_name || t('invoices.pdf.companyName')
   const senderEmail = companyProfile?.contact_email || profile?.email || ''
   const senderPhone = companyProfile?.contact_phone || ''
   const senderAddress = companyProfile?.address || ''
@@ -154,18 +156,18 @@ export function InvoicePrintView({ invoiceId }: { invoiceId: string }) {
             </div>
 
             <div className="text-right">
-              <div className="text-xs tracking-wider text-slate-500 uppercase">Fatura</div>
+              <div className="text-xs tracking-wider text-slate-500 uppercase">{t('invoices.pdf.invoice')}</div>
               <div className="mt-1 text-base font-semibold">{invoice.invoice_number}</div>
               <div className="mt-1 text-xs text-slate-600">
-                <div>Tarih: {formatShortDate(invoice.invoice_date)}</div>
-                <div>Vade: {formatShortDate(invoice.due_date)}</div>
+                <div>{t('invoices.pdf.date')}: {formatShortDate(invoice.invoice_date)}</div>
+                <div>{t('invoices.pdf.dueDate')}: {formatShortDate(invoice.due_date)}</div>
               </div>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-6 mb-6">
             <div className="rounded-md border p-4">
-              <div className="text-xs font-medium text-slate-500">Sayın:</div>
+              <div className="text-xs font-medium text-slate-500">{t('invoices.pdf.to')}:</div>
               <div className="mt-2 text-sm font-semibold">{customer?.name ?? '-'}</div>
               {customer?.contact_person ? (
                 <div className="text-sm text-slate-700">{customer.contact_person}</div>
@@ -175,20 +177,20 @@ export function InvoicePrintView({ invoiceId }: { invoiceId: string }) {
               <div className="text-sm text-slate-700">{customer?.phone ?? ''}</div>
               {customer?.tax_number ? (
                 <div className="mt-2 text-sm text-slate-700">
-                  Vergi No: {customer.tax_number}
-                  {customer.tax_office ? ` • Vergi Dairesi: ${customer.tax_office}` : ''}
+                  {t('invoices.pdf.taxNumber')}: {customer.tax_number}
+                  {customer.tax_office ? ` • ${t('invoices.pdf.taxOffice')}: ${customer.tax_office}` : ''}
                 </div>
               ) : null}
             </div>
 
             <div className="rounded-md border p-4">
-              <div className="text-xs font-medium text-slate-500">Gönderen:</div>
+              <div className="text-xs font-medium text-slate-500">{t('invoices.pdf.from')}:</div>
               <div className="mt-2 text-sm font-semibold">{companyName}</div>
               {senderAddress ? <div className="mt-2 text-sm text-slate-700">{senderAddress}</div> : null}
               {senderPhone ? <div className="text-sm text-slate-700">{senderPhone}</div> : null}
               {senderEmail ? <div className="text-sm text-slate-700">{senderEmail}</div> : null}
               {senderWebsite ? <div className="text-sm text-slate-700">{senderWebsite}</div> : null}
-              <div className="mt-4 text-xs font-medium text-slate-500">Banka / IBAN</div>
+              <div className="mt-4 text-xs font-medium text-slate-500">{t('invoices.pdf.bankIban')}</div>
               <div className="mt-1 text-sm text-slate-700">TR00 0000 0000 0000 0000 0000 00</div>
             </div>
           </div>
@@ -198,17 +200,17 @@ export function InvoicePrintView({ invoiceId }: { invoiceId: string }) {
               <table className="w-full">
                 <thead>
                   <tr className="bg-slate-50 text-left text-xs font-medium text-slate-600">
-                    <th className="px-4 py-3">Açıklama</th>
-                    <th className="px-4 py-3 text-right">Adet</th>
-                    <th className="px-4 py-3 text-right">Birim Fiyat</th>
-                    <th className="px-4 py-3 text-right">Tutar</th>
+                    <th className="px-4 py-3">{t('invoices.pdf.description')}</th>
+                    <th className="px-4 py-3 text-right">{t('invoices.pdf.quantity')}</th>
+                    <th className="px-4 py-3 text-right">{t('invoices.pdf.unitPrice')}</th>
+                    <th className="px-4 py-3 text-right">{t('invoices.pdf.amount')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.length === 0 ? (
                     <tr>
                       <td colSpan={4} className="px-4 py-8 text-center text-sm text-slate-500">
-                        Kalem bulunamadı
+                        {t('invoices.pdf.noItems')}
                       </td>
                     </tr>
                   ) : (
@@ -231,15 +233,15 @@ export function InvoicePrintView({ invoiceId }: { invoiceId: string }) {
           <div className="mt-10 flex justify-end">
             <div className="w-full max-w-sm space-y-2">
               <div className="flex items-center justify-between text-sm text-slate-700">
-                <span>Ara Toplam</span>
+                <span>{t('invoices.pdf.subtotal')}</span>
                 <span className="tabular-nums">{formatCurrency(totals.subtotal)}</span>
               </div>
               <div className="flex items-center justify-between text-sm text-slate-700">
-                <span>KDV</span>
+                <span>{t('invoices.pdf.vat')}</span>
                 <span className="tabular-nums">{formatCurrency(totals.tax)}</span>
               </div>
               <div className="mt-2 flex items-center justify-between border-t pt-3">
-                <span className="text-sm font-semibold">Genel Toplam</span>
+                <span className="text-sm font-semibold">{t('invoices.pdf.total')}</span>
                 <span className="text-lg font-semibold tabular-nums">{formatCurrency(totals.total)}</span>
               </div>
             </div>
@@ -247,7 +249,7 @@ export function InvoicePrintView({ invoiceId }: { invoiceId: string }) {
 
           {invoice.notes ? (
             <div className="mt-10 rounded-md border p-4">
-              <div className="text-xs font-medium text-slate-500">Not</div>
+              <div className="text-xs font-medium text-slate-500">{t('invoices.pdf.note')}</div>
               <div className="mt-2 text-sm text-slate-700 whitespace-pre-wrap">{invoice.notes}</div>
             </div>
           ) : null}

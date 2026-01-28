@@ -81,10 +81,10 @@ export function PublicInvoice() {
         }
 
         if (!cancelled) {
-          setPayload(data as any)
+          setPayload(data as PublicInvoicePayload)
         }
-      } catch (e: any) {
-        if (!cancelled) setError(e?.message || 'Fatura yüklenemedi')
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Fatura yüklenemedi')
       } finally {
         if (!cancelled) setLoading(false)
       }

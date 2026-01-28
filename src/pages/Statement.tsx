@@ -5,41 +5,13 @@ import { useQuery } from '@tanstack/react-query'
 import { Button } from '../components/ui/button'
 import { supabase } from '../lib/supabase'
 import { formatCurrency, formatShortDate } from '../lib/format'
+import type { Database } from '../types/database'
 
-type CompanyProfileRow = {
-  user_id: string
-  company_name: string | null
-  logo_url: string | null
-  contact_email: string | null
-  contact_phone: string | null
-  address: string | null
-  website: string | null
-}
-
-type CustomerRow = {
-  id: string
-  name: string
-  email: string | null
-  phone: string | null
-  address: string | null
-  tax_number: string | null
-  tax_office: string | null
-}
-
-type PaymentRow = {
-  id: string
-  amount: number
-  payment_date: string
-  payment_method: string | null
-  notes: string | null
-}
-
-type InvoiceRow = {
-  id: string
-  invoice_number: string
-  invoice_date: string
-  total_amount: number
-  payments?: PaymentRow[] | null
+type CompanyProfileRow = Database['public']['Tables']['company_profiles']['Row']
+type CustomerRow = Database['public']['Tables']['customers']['Row']
+type PaymentRow = Pick<Database['public']['Tables']['payments']['Row'], 'id' | 'amount' | 'payment_date' | 'payment_method' | 'notes'>
+type InvoiceRow = Pick<Database['public']['Tables']['invoices']['Row'], 'id' | 'invoice_number' | 'invoice_date' | 'total_amount'> & {
+  payments: PaymentRow[] | null
 }
 
 type LedgerLine = {
@@ -50,6 +22,8 @@ type LedgerLine = {
   credit: number
   sortKey: string
 }
+
+type LedgerLineWithBalance = LedgerLine & { balance: number }
 
 export function Statement() {
   const navigate = useNavigate()
@@ -67,10 +41,10 @@ export function Statement() {
         .from('company_profiles')
         .select('*')
         .eq('user_id', userId)
-        .single()
+        .maybeSingle<CompanyProfileRow>()
 
       if (error) return null
-      return (data ?? null) as any
+      return data ?? null
     },
   })
 
@@ -78,9 +52,13 @@ export function Statement() {
     queryKey: ['statement', 'customer', customerId],
     enabled: Boolean(customerId),
     queryFn: async () => {
-      const { data, error } = await supabase.from('customers').select('*').eq('id', customerId).single()
+      const { data, error } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('id', customerId)
+        .maybeSingle<CustomerRow>()
       if (error) throw error
-      return (data ?? null) as any
+      return data ?? null
     },
   })
 
@@ -88,14 +66,19 @@ export function Statement() {
     queryKey: ['statement', 'invoices', customerId],
     enabled: Boolean(customerId),
     queryFn: async () => {
-      const { data, error } = (await supabase
+      const { data, error } = await supabase
         .from('invoices')
         .select('id, invoice_number, invoice_date, total_amount, payments(id, amount, payment_date, payment_method, notes)')
         .eq('customer_id', customerId)
-        .order('invoice_date', { ascending: true })) as any
+        .order('invoice_date', { ascending: true })
+        .returns<InvoiceRow[]>()
 
       if (error) throw error
-      return (data ?? []) as InvoiceRow[]
+      const invoices = (data ?? []) as InvoiceRow[]
+      return invoices.map((invoice) => ({
+        ...invoice,
+        payments: invoice.payments ?? [],
+      }))
     },
   })
 
@@ -113,15 +96,15 @@ export function Statement() {
         sortKey: `${inv.invoice_date}-0-${inv.id}`,
       })
 
-      for (const p of inv.payments ?? []) {
-        const method = p.payment_method ? ` • ${p.payment_method}` : ''
+      for (const payment of inv.payments ?? []) {
+        const method = payment.payment_method ? ` • ${payment.payment_method}` : ''
         rows.push({
-          id: `pay:${p.id}`,
-          date: p.payment_date,
+          id: `pay:${payment.id}`,
+          date: payment.payment_date,
           description: `Tahsilat${method} • ${inv.invoice_number}`,
           debit: 0,
-          credit: Number(p.amount ?? 0),
-          sortKey: `${p.payment_date}-1-${p.id}`,
+          credit: Number(payment.amount ?? 0),
+          sortKey: `${payment.payment_date}-1-${payment.id}`,
         })
       }
     }
@@ -129,9 +112,9 @@ export function Statement() {
     rows.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
 
     let balance = 0
-    const withBalance = rows.map((r) => {
-      balance += Number(r.debit ?? 0) - Number(r.credit ?? 0)
-      return { ...r, balance }
+    const withBalance = rows.map<LedgerLineWithBalance>((row) => {
+      balance += Number(row.debit ?? 0) - Number(row.credit ?? 0)
+      return { ...row, balance }
     })
 
     return {
@@ -145,7 +128,21 @@ export function Statement() {
   const companyName = companyProfile?.company_name || 'Şirket'
 
   const loading = customerQuery.isLoading || invoicesQuery.isLoading
-  const error = (customerQuery.error as any)?.message || (invoicesQuery.error as any)?.message
+  const errorMessage = [customerQuery.error, invoicesQuery.error].reduce<string | undefined>((acc, current) => {
+    if (acc) return acc
+    if (!current) return undefined
+    if (current instanceof Error) {
+      return current.message
+    }
+    if (typeof current === 'string') {
+      return current
+    }
+    if (typeof current === 'object' && 'message' in current) {
+      const message = (current as { message?: unknown }).message
+      return typeof message === 'string' ? message : undefined
+    }
+    return undefined
+  }, undefined)
 
   return (
     <div className="min-h-screen bg-muted/30 p-6 print:bg-transparent print:p-0">
@@ -211,8 +208,8 @@ export function Statement() {
 
             {loading ? (
               <div className="py-10 text-sm text-muted-foreground">Yükleniyor...</div>
-            ) : error ? (
-              <div className="py-10 text-sm text-destructive">{error}</div>
+            ) : errorMessage ? (
+              <div className="py-10 text-sm text-destructive">{errorMessage}</div>
             ) : (
               <div className="overflow-hidden rounded-md border">
                 <table className="w-full">
@@ -233,15 +230,15 @@ export function Statement() {
                         </td>
                       </tr>
                     ) : (
-                      lines.map((r: any) => (
-                        <tr key={r.id} className="border-t text-sm">
-                          <td className="px-4 py-3">{formatShortDate(r.date)}</td>
+                      lines.map((line) => (
+                        <tr key={line.id} className="border-t text-sm">
+                          <td className="px-4 py-3">{formatShortDate(line.date)}</td>
                           <td className="px-4 py-3">
-                            <div className="font-medium">{r.description}</div>
+                            <div className="font-medium">{line.description}</div>
                           </td>
-                          <td className="px-4 py-3 text-right tabular-nums">{r.debit ? formatCurrency(r.debit) : '-'}</td>
-                          <td className="px-4 py-3 text-right tabular-nums">{r.credit ? formatCurrency(r.credit) : '-'}</td>
-                          <td className="px-4 py-3 text-right tabular-nums font-medium">{formatCurrency(r.balance)}</td>
+                          <td className="px-4 py-3 text-right tabular-nums">{line.debit ? formatCurrency(line.debit) : '-'}</td>
+                          <td className="px-4 py-3 text-right tabular-nums">{line.credit ? formatCurrency(line.credit) : '-'}</td>
+                          <td className="px-4 py-3 text-right tabular-nums font-medium">{formatCurrency(line.balance)}</td>
                         </tr>
                       ))
                     )}

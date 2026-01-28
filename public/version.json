@@ -1,0 +1,27 @@
+{
+  "version": "1.0.0",
+  "name": "ERM Dashboard",
+  "description": "Enterprise Resource Management Dashboard - A comprehensive business management solution",
+  "buildDate": "2025-01-10",
+  "features": [
+    "Multi-tenant architecture with role-based access control",
+    "Financial management (invoices, quotes, transactions)",
+    "Customer relationship management (CRM)",
+    "Deal pipeline management with drag-and-drop",
+    "Product and service catalog",
+    "Cash and bank account tracking",
+    "Subscription-based quota system",
+    "Multi-language support (Turkish & English)",
+    "Dark mode support",
+    "Responsive design for all devices"
+  ],
+  "techStack": {
+    "frontend": "React 18 + TypeScript + Vite",
+    "ui": "Shadcn UI + Tailwind CSS",
+    "backend": "Supabase (PostgreSQL + Auth + Storage)",
+    "stateManagement": "TanStack Query",
+    "i18n": "react-i18next"
+  },
+  "license": "Commercial",
+  "author": "ERM Dashboard Team"
+}

@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
+import type { PostgrestError } from '@supabase/supabase-js'
 import { AppLayout } from '../components/layout/AppLayout'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
@@ -12,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { toast } from '../components/ui/use-toast'
 import { useTheme } from '../components/theme-provider'
 import { useAuth } from '../contexts/AuthContext'
+import { usePermissions } from '../contexts/PermissionsContext'
 import { useCategories, useCreateCategory, useDeleteCategory } from '../hooks/useSupabaseQuery'
 import { supabase } from '../lib/supabase'
 import type { Database } from '../types/database'
@@ -19,21 +22,14 @@ import { LogOut, Pencil, Plus, Trash2, Upload } from 'lucide-react'
 
 type CategoryRow = Database['public']['Tables']['categories']['Row']
 
-type CompanyProfileRow = {
-  user_id: string
-  company_name: string | null
-  logo_url: string | null
-  contact_name: string | null
-  contact_email: string | null
-  contact_phone: string | null
-  address: string | null
-  website: string | null
-}
+type CompanyProfileRow = Database['public']['Tables']['company_profiles']['Row']
 
 export function SettingsPage() {
+  const { t } = useTranslation()
   const { user, signOut } = useAuth()
   const { resolvedTheme, setTheme } = useTheme()
   const navigate = useNavigate()
+  const { permissions } = usePermissions()
   
   const [fullName, setFullName] = useState('')
   const [companyName, setCompanyName] = useState('')
@@ -75,42 +71,71 @@ export function SettingsPage() {
         .from('company_profiles')
         .select('*')
         .eq('user_id', userId)
-        .maybeSingle()
+        .maybeSingle<CompanyProfileRow>()
 
-      console.log('Fetched Profile:', data, error)
+      if (error) {
+        const errorCode = (error as PostgrestError | null)?.code
+        if (errorCode === 'PGRST116') {
+          return null
+        }
+        throw error
+      }
 
-      if (error && (error as any)?.code !== 'PGRST116') throw error
-
-      return (data ?? null) as any
+      return data ?? null
     },
   })
+
+  const getErrorMessage = useCallback(
+    (error: unknown) => {
+      if (error instanceof Error) {
+        return error.message
+      }
+      if (typeof error === 'string') {
+        return error
+      }
+      if (error && typeof error === 'object' && 'message' in error) {
+        const message = (error as { message?: unknown }).message
+        if (typeof message === 'string') {
+          return message
+        }
+      }
+      return t('common.unexpectedError')
+    },
+    [t]
+  )
+
+  const {
+    data: companyProfile,
+    isLoading: isProfileLoading,
+    isFetching: isProfileFetching,
+    isError: isProfileError,
+  } = companyProfileQuery
 
   useEffect(() => {
     if (profileInitialized) return
 
-    if (companyProfileQuery.isLoading || companyProfileQuery.isFetching) return
-    if (companyProfileQuery.isError) return
+    if (isProfileLoading || isProfileFetching || isProfileError) return
 
-    const p = companyProfileQuery.data
+    const profile = companyProfile
     if (!user) return
 
-    setFullName(p?.contact_name ?? '')
-    setCompanyName(p?.company_name ?? '')
-    setContactEmail(p?.contact_email ?? user.email ?? '')
-    setPhone(p?.contact_phone ?? '')
-    setAddress(p?.address ?? '')
-    setWebsite(p?.website ?? '')
-    setLogoUrl(p?.logo_url ?? '')
+    setFullName(profile?.contact_name ?? '')
+    setCompanyName(profile?.company_name ?? '')
+    setContactEmail(profile?.contact_email ?? user.email ?? '')
+    setPhone(profile?.contact_phone ?? '')
+    setAddress(profile?.address ?? '')
+    setWebsite(profile?.website ?? '')
+    setLogoUrl(profile?.logo_url ?? '')
 
     setProfileInitialized(true)
-  }, [companyProfileQuery.data, companyProfileQuery.isFetching, companyProfileQuery.isLoading, profileInitialized, user])
+  }, [companyProfile, isProfileError, isProfileFetching, isProfileLoading, profileInitialized, user])
 
   const canSaveCategoryEdit = useMemo(() => {
     return Boolean(editingCategory) && editingName.trim().length > 0 && !isUpdatingCategory
   }, [editingCategory, editingName, isUpdatingCategory])
 
   const handleUpdateCategory = async () => {
-    if (!editingCategory) return
+    if (!canEditSettings || !editingCategory) return
     const name = editingName.trim()
     if (!name) return
 
@@ -123,15 +148,15 @@ export function SettingsPage() {
 
       if (error) throw error
 
-      toast({ title: 'Kategori güncellendi' })
+      toast({ title: t('settings.categoryUpdated') })
       setEditingCategory(null)
       setEditingName('')
 
       await Promise.all([incomeCategoriesQuery.refetch(), expenseCategoriesQuery.refetch()])
-    } catch (e: any) {
+    } catch (error) {
       toast({
-        title: 'Kategori güncellenemedi',
-        description: e?.message,
+        title: t('settings.categoryUpdateFailed'),
+        description: getErrorMessage(error),
         variant: 'destructive',
       })
     } finally {
@@ -140,6 +165,7 @@ export function SettingsPage() {
   }
 
   const isDark = resolvedTheme === 'dark'
+  const canEditSettings = permissions.settings?.edit ?? false
 
   const handleSaveProfile = async () => {
     if (!user) return
@@ -161,13 +187,13 @@ export function SettingsPage() {
       const { error } = await supabase.from('company_profiles').upsert(payload, { onConflict: 'user_id' })
       if (error) throw error
 
-      toast({ title: 'Şirket profili kaydedildi' })
+      toast({ title: t('settings.companyProfileSaved') })
       setProfileInitialized(false)
       await companyProfileQuery.refetch()
-    } catch (e: any) {
+    } catch (error) {
       toast({
-        title: 'Kayıt başarısız',
-        description: e?.message,
+        title: t('common.saveFailed'),
+        description: getErrorMessage(error),
         variant: 'destructive',
       })
     } finally {
@@ -181,8 +207,7 @@ export function SettingsPage() {
       const ext = file.name.split('.').pop() || 'png'
       const path = `${user.id}/${Date.now()}.${ext}`
 
-      const { error: uploadError } = await supabase
-        .storage
+      const { error: uploadError } = await supabase.storage
         .from('company-logos')
         .upload(path, file, { upsert: true, contentType: file.type })
 
@@ -192,11 +217,11 @@ export function SettingsPage() {
       const publicUrl = data.publicUrl
       setLogoUrl(publicUrl)
 
-      toast({ title: 'Logo yüklendi' })
-    } catch (e: any) {
+      toast({ title: t('settings.logoUploaded') })
+    } catch (error) {
       toast({
-        title: 'Logo yüklenemedi',
-        description: e?.message,
+        title: t('settings.logoUploadFailed'),
+        description: getErrorMessage(error),
         variant: 'destructive',
       })
     }
@@ -213,8 +238,8 @@ export function SettingsPage() {
 
     if (!password || !confirm) {
       toast({
-        title: 'Şifre güncellenemedi',
-        description: 'Lütfen tüm alanları doldurun',
+        title: t('auth.passwordUpdateFailed'),
+        description: t('auth.pleaseFillAllFields'),
         variant: 'destructive',
       })
       return
@@ -222,8 +247,8 @@ export function SettingsPage() {
 
     if (password !== confirm) {
       toast({
-        title: 'Şifre güncellenemedi',
-        description: 'Şifreler eşleşmiyor',
+        title: t('auth.passwordUpdateFailed'),
+        description: t('auth.passwordsDoNotMatch'),
         variant: 'destructive',
       })
       return
@@ -234,13 +259,13 @@ export function SettingsPage() {
       const { error } = await supabase.auth.updateUser({ password })
       if (error) throw error
 
-      toast({ title: 'Şifreniz başarıyla güncellendi' })
+      toast({ title: t('auth.passwordUpdatedSuccessfully') })
       setNewPassword('')
       setConfirmPassword('')
-    } catch (e: any) {
+    } catch (error) {
       toast({
-        title: 'Şifre güncellenemedi',
-        description: e?.message,
+        title: t('auth.passwordUpdateFailed'),
+        description: getErrorMessage(error),
         variant: 'destructive',
       })
     } finally {
@@ -249,29 +274,27 @@ export function SettingsPage() {
   }
 
   return (
-    <AppLayout title="Ayarlar">
+    <AppLayout title={t('nav.settings')}>
       <div className="space-y-6 max-w-4xl">
         {/* Profile & Company Info */}
         <Card>
           <CardHeader>
-            <CardTitle>Profil & Şirket Bilgileri</CardTitle>
-            <CardDescription>
-              Kişisel ve şirket bilgilerinizi güncelleyin
-            </CardDescription>
+            <CardTitle>{t('settings.profile.title')}</CardTitle>
+            <CardDescription>{t('settings.profile.description')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-4">
                 <div className="h-16 w-16 rounded-full border border-border overflow-hidden bg-muted flex items-center justify-center">
                   {logoUrl ? (
-                    <img src={logoUrl} alt="Logo" className="h-full w-full object-cover" />
+                    <img src={logoUrl} alt={t('settings.profile.logoLabel')} className="h-full w-full object-cover" />
                   ) : (
-                    <div className="text-xs text-muted-foreground">Logo</div>
+                    <div className="text-xs text-muted-foreground">{t('settings.profile.logoLabel')}</div>
                   )}
                 </div>
                 <div className="space-y-1">
-                  <div className="text-sm font-medium">Logo</div>
-                  <div className="text-xs text-muted-foreground">PNG/JPG • önerilen 512x512</div>
+                  <div className="text-sm font-medium">{t('settings.profile.logoLabel')}</div>
+                  <div className="text-xs text-muted-foreground">{t('settings.profile.logoHelper')}</div>
                 </div>
               </div>
 
@@ -291,39 +314,41 @@ export function SettingsPage() {
                 <Button
                   type="button"
                   variant="outline"
-                  disabled={!user}
+                  disabled={!user || !canEditSettings}
                   onClick={() => logoInputRef.current?.click()}
                 >
                   <Upload className="mr-2 h-4 w-4" />
-                  {logoUrl ? 'Değiştir' : 'Logo Yükle'}
+                  {t(logoUrl ? 'settings.profile.changeLogo' : 'settings.profile.uploadLogo')}
                 </Button>
               </div>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="fullName">Ad Soyad</Label>
+                <Label htmlFor="fullName">{t('forms.fullName')}</Label>
                 <Input
                   id="fullName"
-                  placeholder="Adınız Soyadınız"
+                  placeholder={t('forms.fullNamePlaceholder')}
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
+                  disabled={!canEditSettings}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="companyName">Şirket Adı</Label>
+                <Label htmlFor="companyName">{t('forms.companyName')}</Label>
                 <Input
                   id="companyName"
-                  placeholder="Şirket adınız"
+                  placeholder={t('forms.companyNamePlaceholder')}
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
+                  disabled={!canEditSettings}
                 />
               </div>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="email">E-posta</Label>
+                <Label htmlFor="email">{t('common.email')}</Label>
                 <Input
                   id="email"
                   type="email"
@@ -333,52 +358,56 @@ export function SettingsPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="contactEmail">İletişim E-posta</Label>
+                <Label htmlFor="contactEmail">{t('settings.profile.contactEmail')}</Label>
                 <Input
                   id="contactEmail"
                   type="email"
-                  placeholder="info@sirket.com"
+                  placeholder={t('settings.profile.contactEmailPlaceholder')}
                   value={contactEmail}
                   onChange={(e) => setContactEmail(e.target.value)}
+                  disabled={!canEditSettings}
                 />
               </div>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="phone">Telefon</Label>
+                <Label htmlFor="phone">{t('common.phone')}</Label>
                 <Input
                   id="phone"
-                  placeholder="+90 (5XX) XXX XX XX"
+                  placeholder={t('settings.profile.phonePlaceholder')}
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
+                  disabled={!canEditSettings}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="website">Website</Label>
+                <Label htmlFor="website">{t('settings.profile.website')}</Label>
                 <Input
                   id="website"
-                  placeholder="https://sirket.com"
+                  placeholder={t('settings.profile.websitePlaceholder')}
                   value={website}
                   onChange={(e) => setWebsite(e.target.value)}
+                  disabled={!canEditSettings}
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="address">Adres</Label>
+              <Label htmlFor="address">{t('common.address')}</Label>
               <textarea
                 id="address"
                 className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                placeholder="Şirket adresiniz"
+                placeholder={t('settings.profile.addressPlaceholder')}
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
+                disabled={!canEditSettings}
               />
             </div>
 
             <div className="flex justify-end">
-              <Button onClick={handleSaveProfile} disabled={isSavingProfile || companyProfileQuery.isFetching}>
-                Kaydet
+              <Button onClick={handleSaveProfile} disabled={!canEditSettings || isSavingProfile || companyProfileQuery.isFetching}>
+                {t('common.save')}
               </Button>
             </div>
           </CardContent>
@@ -386,19 +415,17 @@ export function SettingsPage() {
 
         <Card className="rounded-2xl shadow-sm border-border/50">
           <CardHeader>
-            <CardTitle>Kategoriler</CardTitle>
-            <CardDescription>
-              Gelir ve gider kategorilerinizi yönetin
-            </CardDescription>
+            <CardTitle>{t('settings.categories.title')}</CardTitle>
+            <CardDescription>{t('settings.categories.description')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <Tabs defaultValue="income" className="w-full">
               <TabsList className="w-full rounded-xl bg-muted/60 p-1">
                 <TabsTrigger className="flex-1 rounded-lg" value="income">
-                  Gelir Kategorileri
+                  {t('settings.categories.incomeTab')}
                 </TabsTrigger>
                 <TabsTrigger className="flex-1 rounded-lg" value="expense">
-                  Gider Kategorileri
+                  {t('settings.categories.expenseTab')}
                 </TabsTrigger>
               </TabsList>
 
@@ -406,18 +433,19 @@ export function SettingsPage() {
                 <div className="overflow-hidden rounded-2xl border border-border/50 bg-background">
                   <div className="flex items-center gap-2 border-b border-border/50 p-4">
                     <Input
-                      placeholder="Yeni gelir kategorisi"
+                      placeholder={t('settings.categories.newIncomePlaceholder')}
                       value={newIncomeCategory}
                       onChange={(e) => setNewIncomeCategory(e.target.value)}
                       className="bg-muted/60 border-0 shadow-none focus-visible:ring-1 focus-visible:ring-ring"
+                      disabled={!canEditSettings}
                     />
                     <Button
                       type="button"
                       size="sm"
-                      disabled={!user || createCategory.isPending}
+                      disabled={!user || !canEditSettings || createCategory.isPending}
                       onClick={async () => {
                         const name = newIncomeCategory.trim()
-                        if (!user || !name) return
+                        if (!user || !canEditSettings || !name) return
                         try {
                           await createCategory.mutateAsync({
                             user_id: user.id,
@@ -425,23 +453,23 @@ export function SettingsPage() {
                             type: 'income',
                           })
                           setNewIncomeCategory('')
-                          toast({ title: 'Kategori eklendi' })
-                        } catch (e: any) {
+                          toast({ title: t('settings.categoryAdded') })
+                        } catch (e) {
                           toast({
-                            title: 'Kategori eklenemedi',
-                            description: e?.message,
+                            title: t('settings.categoryAddFailed'),
+                            description: getErrorMessage(e),
                             variant: 'destructive',
                           })
                         }
                       }}
                     >
                       <Plus className="h-4 w-4" />
-                      Ekle
+                      {t('settings.categories.addButton')}
                     </Button>
                   </div>
 
                   {(incomeCategoriesQuery.data ?? []).length === 0 ? (
-                    <div className="p-4 text-sm text-muted-foreground">Henüz kategori yok</div>
+                    <div className="p-4 text-sm text-muted-foreground">{t('settings.categories.empty')}</div>
                   ) : (
                     <div>
                       {(incomeCategoriesQuery.data ?? []).map((c, idx, arr) => (
@@ -458,13 +486,14 @@ export function SettingsPage() {
                               type="button"
                               variant="ghost"
                               size="icon"
-                              disabled={deleteCategory.isPending || isUpdatingCategory}
+                              disabled={!canEditSettings || deleteCategory.isPending || isUpdatingCategory}
                               className="text-muted-foreground transition-colors hover:bg-blue-50 hover:text-blue-600"
                               onClick={() => {
-                                setEditingCategory(c as any)
+                                if (!canEditSettings) return
+                                setEditingCategory(c)
                                 setEditingName(c.name ?? '')
                               }}
-                              title="Düzenle"
+                              title={t('common.edit')}
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
@@ -472,21 +501,22 @@ export function SettingsPage() {
                               type="button"
                               variant="ghost"
                               size="icon"
-                              disabled={deleteCategory.isPending || isUpdatingCategory}
+                              disabled={!canEditSettings || deleteCategory.isPending || isUpdatingCategory}
                               className="text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                               onClick={async () => {
+                                if (!canEditSettings) return
                                 try {
                                   await deleteCategory.mutateAsync({ id: c.id, itemName: c.name })
-                                  toast({ title: 'Kategori silindi' })
-                                } catch (e: any) {
+                                  toast({ title: t('settings.categoryDeleted') })
+                                } catch (e) {
                                   toast({
-                                    title: 'Silme işlemi başarısız',
-                                    description: e?.message,
+                                    title: t('settings.categoryDeleteFailed'),
+                                    description: getErrorMessage(e),
                                     variant: 'destructive',
                                   })
                                 }
                               }}
-                              title="Sil"
+                              title={t('common.delete')}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -502,18 +532,19 @@ export function SettingsPage() {
                 <div className="overflow-hidden rounded-2xl border border-border/50 bg-background">
                   <div className="flex items-center gap-2 border-b border-border/50 p-4">
                     <Input
-                      placeholder="Yeni gider kategorisi"
+                      placeholder={t('settings.categories.newExpensePlaceholder')}
                       value={newExpenseCategory}
                       onChange={(e) => setNewExpenseCategory(e.target.value)}
                       className="bg-muted/60 border-0 shadow-none focus-visible:ring-1 focus-visible:ring-ring"
+                      disabled={!canEditSettings}
                     />
                     <Button
                       type="button"
                       size="sm"
-                      disabled={!user || createCategory.isPending}
+                      disabled={!user || !canEditSettings || createCategory.isPending}
                       onClick={async () => {
                         const name = newExpenseCategory.trim()
-                        if (!user || !name) return
+                        if (!user || !canEditSettings || !name) return
                         try {
                           await createCategory.mutateAsync({
                             user_id: user.id,
@@ -521,23 +552,23 @@ export function SettingsPage() {
                             type: 'expense',
                           })
                           setNewExpenseCategory('')
-                          toast({ title: 'Kategori eklendi' })
-                        } catch (e: any) {
+                          toast({ title: t('settings.categoryAdded') })
+                        } catch (e) {
                           toast({
-                            title: 'Kategori eklenemedi',
-                            description: e?.message,
+                            title: t('settings.categoryAddFailed'),
+                            description: getErrorMessage(e),
                             variant: 'destructive',
                           })
                         }
                       }}
                     >
                       <Plus className="h-4 w-4" />
-                      Ekle
+                      {t('settings.categories.addButton')}
                     </Button>
                   </div>
 
                   {(expenseCategoriesQuery.data ?? []).length === 0 ? (
-                    <div className="p-4 text-sm text-muted-foreground">Henüz kategori yok</div>
+                    <div className="p-4 text-sm text-muted-foreground">{t('settings.categories.empty')}</div>
                   ) : (
                     <div>
                       {(expenseCategoriesQuery.data ?? []).map((c, idx, arr) => (
@@ -557,10 +588,10 @@ export function SettingsPage() {
                               disabled={deleteCategory.isPending || isUpdatingCategory}
                               className="text-muted-foreground transition-colors hover:bg-blue-50 hover:text-blue-600"
                               onClick={() => {
-                                setEditingCategory(c as any)
+                                setEditingCategory(c)
                                 setEditingName(c.name ?? '')
                               }}
-                              title="Düzenle"
+                              title={t('common.edit')}
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
@@ -573,16 +604,16 @@ export function SettingsPage() {
                               onClick={async () => {
                                 try {
                                   await deleteCategory.mutateAsync({ id: c.id, itemName: c.name })
-                                  toast({ title: 'Kategori silindi' })
-                                } catch (e: any) {
+                                  toast({ title: t('settings.categoryDeleted') })
+                                } catch (e) {
                                   toast({
-                                    title: 'Silme işlemi başarısız',
-                                    description: e?.message,
+                                    title: t('settings.categoryDeleteFailed'),
+                                    description: getErrorMessage(e),
                                     variant: 'destructive',
                                   })
                                 }
                               }}
-                              title="Sil"
+                              title={t('common.delete')}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -606,16 +637,16 @@ export function SettingsPage() {
             >
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Kategoriyi Düzenle</DialogTitle>
+                  <DialogTitle>{t('settings.categories.editDialogTitle')}</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-2">
-                  <Label htmlFor="editCategoryName">Kategori Adı</Label>
+                  <Label htmlFor="editCategoryName">{t('settings.categories.nameLabel')}</Label>
                   <Input
                     id="editCategoryName"
                     value={editingName}
                     onChange={(e) => setEditingName(e.target.value)}
-                    placeholder="Kategori adı"
-                    disabled={isUpdatingCategory}
+                    placeholder={t('settings.categories.namePlaceholder')}
+                    disabled={!canEditSettings || isUpdatingCategory}
                   />
                 </div>
                 <DialogFooter className="gap-2">
@@ -628,14 +659,14 @@ export function SettingsPage() {
                     }}
                     disabled={isUpdatingCategory}
                   >
-                    İptal
+                    {t('common.cancel')}
                   </Button>
                   <Button
                     type="button"
                     onClick={handleUpdateCategory}
-                    disabled={!canSaveCategoryEdit}
+                    disabled={!canEditSettings || !canSaveCategoryEdit}
                   >
-                    Kaydet
+                    {t('common.save')}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -646,18 +677,14 @@ export function SettingsPage() {
         {/* App Settings */}
         <Card>
           <CardHeader>
-            <CardTitle>Uygulama Ayarları</CardTitle>
-            <CardDescription>
-              Görünüm ve bildirim tercihlerinizi yönetin
-            </CardDescription>
+            <CardTitle>{t('settings.app.title')}</CardTitle>
+            <CardDescription>{t('settings.app.description')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
-                <Label htmlFor="darkMode">Karanlık Mod</Label>
-                <p className="text-sm text-muted-foreground">
-                  Koyu tema kullan
-                </p>
+                <Label htmlFor="darkMode">{t('settings.app.darkModeLabel')}</Label>
+                <p className="text-sm text-muted-foreground">{t('settings.app.darkModeNote')}</p>
               </div>
               <button
                 id="darkMode"
@@ -680,10 +707,8 @@ export function SettingsPage() {
 
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
-                <Label htmlFor="notifications">Bildirimleri Aç</Label>
-                <p className="text-sm text-muted-foreground">
-                  Önemli güncellemelerden haberdar olun
-                </p>
+                <Label htmlFor="notifications">{t('settings.app.notificationsLabel')}</Label>
+                <p className="text-sm text-muted-foreground">{t('settings.app.notificationsNote')}</p>
               </div>
               <button
                 id="notifications"
@@ -706,28 +731,28 @@ export function SettingsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Güvenlik</CardTitle>
-            <CardDescription>Hesap şifrenizi güncelleyin.</CardDescription>
+            <CardTitle>{t('settings.security.title')}</CardTitle>
+            <CardDescription>{t('settings.security.description')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="newPassword">Yeni Şifre</Label>
+                <Label htmlFor="newPassword">{t('settings.security.newPassword')}</Label>
                 <Input
                   id="newPassword"
                   type="password"
-                  placeholder="Yeni şifreniz"
+                  placeholder={t('settings.security.newPasswordPlaceholder')}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   disabled={isUpdatingPassword}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Yeni Şifre (Tekrar)</Label>
+                <Label htmlFor="confirmPassword">{t('settings.security.confirmPassword')}</Label>
                 <Input
                   id="confirmPassword"
                   type="password"
-                  placeholder="Şifreyi onaylayın"
+                  placeholder={t('settings.security.confirmPasswordPlaceholder')}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   disabled={isUpdatingPassword}
@@ -737,7 +762,7 @@ export function SettingsPage() {
 
             <div className="flex justify-end">
               <Button type="button" onClick={handleUpdatePassword} disabled={isUpdatingPassword}>
-                Şifreyi Güncelle
+                {t('settings.security.updatePassword')}
               </Button>
             </div>
           </CardContent>
@@ -746,10 +771,8 @@ export function SettingsPage() {
         {/* Danger Zone */}
         <Card className="border-destructive/50">
           <CardHeader>
-            <CardTitle className="text-destructive">Oturum</CardTitle>
-            <CardDescription>
-              Hesabınızdan çıkış yapın
-            </CardDescription>
+            <CardTitle className="text-destructive">{t('settings.session.title')}</CardTitle>
+            <CardDescription>{t('settings.session.description')}</CardDescription>
           </CardHeader>
           <CardContent>
             <Button 
@@ -758,7 +781,7 @@ export function SettingsPage() {
               className="w-full sm:w-auto"
             >
               <LogOut className="mr-2 h-4 w-4" />
-              Çıkış Yap
+              {t('settings.session.logoutButton')}
             </Button>
           </CardContent>
         </Card>
