@@ -6,13 +6,19 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+*.emd
+
+# Environment files
+.env
+.env.*
+!.env.example
 
 node_modules/
 dist/
 dist-ssr
 *.local
-.env
 build/
+supabase/migrations/
 
 # Editor directories and files
 .vscode/
