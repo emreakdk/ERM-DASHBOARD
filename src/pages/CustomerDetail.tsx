@@ -412,7 +412,7 @@ export function CustomerDetail() {
               }}
             >
               <FileText className="h-4 w-4" />
-              Ekstre Görüntüle
+              <span className="hidden sm:inline">Ekstre Görüntüle</span>
             </Button>
           ) : null}
         </div>
@@ -431,7 +431,7 @@ export function CustomerDetail() {
                 <div className="flex items-center gap-3">
                   <div
                     className={cn(
-                      'h-10 w-10 rounded-full flex items-center justify-center',
+                      'h-10 w-10 shrink-0 rounded-full flex items-center justify-center',
                       customer.type === 'corporate'
                         ? 'bg-orange-100 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400'
                         : 'bg-blue-100 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400'
@@ -453,11 +453,11 @@ export function CustomerDetail() {
 
                 <div className="mt-4 flex flex-col gap-2 text-sm text-muted-foreground">
                   <div className="flex items-center gap-2">
-                    <Mail className="h-4 w-4" />
+                    <Mail className="h-4 w-4 shrink-0" />
                     <span className="truncate">{customer.email || '-'}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Phone className="h-4 w-4" />
+                    <Phone className="h-4 w-4 shrink-0" />
                     <span className="truncate">{customer.phone || '-'}</span>
                   </div>
                 </div>
@@ -473,36 +473,37 @@ export function CustomerDetail() {
         </div>
 
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="w-full justify-start">
-            <TabsTrigger value="overview" className="gap-2">
+          {/* Mobile Scrollable Tabs */}
+          <TabsList className="w-full justify-start overflow-x-auto flex-nowrap h-auto p-1">
+            <TabsTrigger value="overview" className="gap-2 shrink-0">
               <User className="h-4 w-4" />
               Genel Bakış
             </TabsTrigger>
-            <TabsTrigger value="transactions" className="gap-2">
+            <TabsTrigger value="transactions" className="gap-2 shrink-0">
               <FileText className="h-4 w-4" />
               Hesap Hareketleri
             </TabsTrigger>
-            <TabsTrigger value="invoices" className="gap-2">
+            <TabsTrigger value="invoices" className="gap-2 shrink-0">
               <Receipt className="h-4 w-4" />
               Faturalar
             </TabsTrigger>
-            <TabsTrigger value="deals" className="gap-2">
+            <TabsTrigger value="deals" className="gap-2 shrink-0">
               <Kanban className="h-4 w-4" />
               Fırsatlar
             </TabsTrigger>
-            <TabsTrigger value="quotes" className="gap-2">
+            <TabsTrigger value="quotes" className="gap-2 shrink-0">
               <FileText className="h-4 w-4" />
               Teklifler
             </TabsTrigger>
-            <TabsTrigger value="activities" className="gap-2">
+            <TabsTrigger value="activities" className="gap-2 shrink-0">
               <Calendar className="h-4 w-4" />
               Aktiviteler
             </TabsTrigger>
-            <TabsTrigger value="notes" className="gap-2">
+            <TabsTrigger value="notes" className="gap-2 shrink-0">
               <Pencil className="h-4 w-4" />
               Notlar
             </TabsTrigger>
-            <TabsTrigger value="files" className="gap-2">
+            <TabsTrigger value="files" className="gap-2 shrink-0">
               <FileText className="h-4 w-4" />
               Dosyalar
             </TabsTrigger>
@@ -560,7 +561,8 @@ export function CustomerDetail() {
                   <DialogTrigger asChild>
                     <Button type="button" className="gap-2" disabled={!customerId || !canEditCustomers}>
                       <Plus className="h-4 w-4" />
-                      İşlem Ekle
+                      <span className="hidden sm:inline">İşlem Ekle</span>
+                      <span className="sm:hidden">Ekle</span>
                     </Button>
                   </DialogTrigger>
                   <DialogContent className="sm:max-w-[520px]">
@@ -661,8 +663,9 @@ export function CustomerDetail() {
                 ) : customerTransactions.length === 0 ? (
                   <div className="text-sm text-muted-foreground">Bu müşteriye ait işlem yok.</div>
                 ) : (
-                  <div className="rounded-md border">
-                    <table className="w-full">
+                  // Mobile Table Fix
+                  <div className="rounded-md border overflow-x-auto">
+                    <table className="w-full min-w-[800px]">
                       <thead>
                         <tr className="border-b bg-muted/50">
                           <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Tarih</th>
@@ -891,8 +894,9 @@ export function CustomerDetail() {
                 ) : invoices.length === 0 ? (
                   <div className="text-sm text-muted-foreground">Bu müşteriye ait fatura yok.</div>
                 ) : (
-                  <div className="rounded-md border">
-                    <table className="w-full">
+                  // Mobile Table Fix
+                  <div className="rounded-md border overflow-x-auto">
+                    <table className="w-full min-w-[800px]">
                       <thead>
                         <tr className="border-b bg-muted/50">
                           <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Fatura No</th>
@@ -967,8 +971,9 @@ export function CustomerDetail() {
                 ) : deals.length === 0 ? (
                   <div className="text-sm text-muted-foreground">Bu müşteriye ait fırsat yok.</div>
                 ) : (
-                  <div className="rounded-md border">
-                    <table className="w-full">
+                  // Mobile Table Fix
+                  <div className="rounded-md border overflow-x-auto">
+                    <table className="w-full min-w-[800px]">
                       <thead>
                         <tr className="border-b bg-muted/50">
                           <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Başlık</th>
@@ -1015,8 +1020,9 @@ export function CustomerDetail() {
                 ) : quotes.length === 0 ? (
                   <div className="text-sm text-muted-foreground">Bu müşteriye ait teklif yok.</div>
                 ) : (
-                  <div className="rounded-md border">
-                    <table className="w-full">
+                  // Mobile Table Fix
+                  <div className="rounded-md border overflow-x-auto">
+                    <table className="w-full min-w-[800px]">
                       <thead>
                         <tr className="border-b bg-muted/50">
                           <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Teklif No</th>
@@ -1076,7 +1082,8 @@ export function CustomerDetail() {
                   disabled={!canEditCustomers}
                 >
                   <Plus className="h-4 w-4" />
-                  Yeni Aktivite Ekle
+                  <span className="hidden sm:inline">Yeni Aktivite Ekle</span>
+                  <span className="sm:hidden">Ekle</span>
                 </Button>
               </CardHeader>
               <CardContent>
@@ -1106,8 +1113,9 @@ export function CustomerDetail() {
                 ) : (activitiesQuery.data ?? []).length === 0 ? (
                   <div className="text-sm text-muted-foreground">Bu müşteriye ait aktivite yok.</div>
                 ) : (
-                  <div className="rounded-md border">
-                    <table className="w-full">
+                  // Mobile Table Fix
+                  <div className="rounded-md border overflow-x-auto">
+                    <table className="w-full min-w-[800px]">
                       <thead>
                         <tr className="border-b bg-muted/50">
                           <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Tamam</th>

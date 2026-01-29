@@ -255,167 +255,169 @@ export function DashboardPage() {
   }, [dateLocale, dateRange.from, dateRange.to, t])
 
   const headerRight = (
-    <div className="flex items-center gap-2">
-      <div className="w-[200px]">
-        <Popover open={accountFilterOpen} onOpenChange={setAccountFilterOpen}>
+    <div className="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end lg:flex-nowrap">
+      <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center sm:gap-2 lg:flex-nowrap">
+        <div className="w-full sm:w-56">
+          <Popover open={accountFilterOpen} onOpenChange={setAccountFilterOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                role="combobox"
+                aria-expanded={accountFilterOpen}
+                disabled={accountsQuery.isLoading || accountsQuery.isError}
+                className={cn('h-10 w-full bg-white dark:bg-background justify-between border-border/50 shadow-sm', selectedAccountIds.length === 0 && 'text-muted-foreground')}
+              >
+                <span className="truncate">{accountsQuery.isLoading ? t('common.loading') : accountFilterLabel}</span>
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[--radix-popover-trigger-width] p-2" align="start">
+              <Command value={accountFilterQuery} onValueChange={setAccountFilterQuery}>
+                <CommandInput placeholder={t('dashboard.searchAccount')} />
+                <CommandList>
+                  {filteredAccounts.length === 0 ? (
+                    <CommandEmpty>{t('common.noData')}</CommandEmpty>
+                  ) : null}
+                  <CommandGroup>
+                    <CommandItem
+                      selected={selectedAccountIds.length === 0}
+                      onClick={() => setSelectedAccountIds([])}
+                      className="flex items-center gap-2"
+                    >
+                      <Check className={cn('h-4 w-4', selectedAccountIds.length === 0 ? 'opacity-100' : 'opacity-0')} />
+                      <span className="truncate">{t('dashboard.allAccounts')}</span>
+                    </CommandItem>
+
+                    {filteredAccounts.map((a) => {
+                      const isSelected = selectedAccountIds.includes(a.id)
+                      return (
+                        <CommandItem
+                          key={a.id}
+                          selected={isSelected}
+                          onClick={() =>
+                            setSelectedAccountIds((prev) =>
+                              prev.includes(a.id) ? prev.filter((id) => id !== a.id) : [...prev, a.id]
+                            )
+                          }
+                          className="flex items-center gap-2"
+                        >
+                          <Check className={cn('h-4 w-4', isSelected ? 'opacity-100' : 'opacity-0')} />
+                          <span className="truncate">{a.name}</span>
+                        </CommandItem>
+                      )
+                    })}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+        </div>
+
+        <Popover>
           <PopoverTrigger asChild>
             <Button
               type="button"
               variant="outline"
-              role="combobox"
-              aria-expanded={accountFilterOpen}
-              disabled={accountsQuery.isLoading || accountsQuery.isError}
-              className={cn('h-9 w-full bg-white dark:bg-background justify-between border-border/50 shadow-sm', selectedAccountIds.length === 0 && 'text-muted-foreground')}
+              className={cn(
+                'h-10 w-full bg-white dark:bg-background justify-between text-left font-normal border-border/50 shadow-sm sm:w-auto sm:justify-start',
+                !dateRange.from && 'text-muted-foreground'
+              )}
             >
-              <span className="truncate">{accountsQuery.isLoading ? t('common.loading') : accountFilterLabel}</span>
-              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              <span className="flex items-center gap-2">
+                <CalendarIcon className="h-4 w-4" />
+                {dateRangeLabel}
+              </span>
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-[--radix-popover-trigger-width] p-2" align="start">
-            <Command value={accountFilterQuery} onValueChange={setAccountFilterQuery}>
-              <CommandInput placeholder={t('dashboard.searchAccount')} />
-              <CommandList>
-                {filteredAccounts.length === 0 ? (
-                  <CommandEmpty>{t('common.noData')}</CommandEmpty>
-                ) : null}
-                <CommandGroup>
-                  <CommandItem
-                    selected={selectedAccountIds.length === 0}
-                    onClick={() => setSelectedAccountIds([])}
-                    className="flex items-center gap-2"
-                  >
-                    <Check className={cn('h-4 w-4', selectedAccountIds.length === 0 ? 'opacity-100' : 'opacity-0')} />
-                    <span className="truncate">{t('dashboard.allAccounts')}</span>
-                  </CommandItem>
+          <PopoverContent align="end" className="w-auto max-w-[90vw] p-3">
+            <div className="flex flex-wrap gap-2 pb-3">
+              <Button type="button" variant="ghost" size="sm" onClick={() => setDateRange({ from: now, to: now })}>
+                {t('dashboard.today')}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  setDateRange({
+                    from: startOfWeek(now, { weekStartsOn: 1 }),
+                    to: endOfWeek(now, { weekStartsOn: 1 }),
+                  })
+                }
+              >
+                {t('dashboard.thisWeek')}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setDateRange({ from: startOfMonth(now), to: endOfMonth(now) })}
+              >
+                {t('dashboard.thisMonth')}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const prev = subMonths(now, 1)
+                  setDateRange({ from: startOfMonth(prev), to: endOfMonth(prev) })
+                }}
+              >
+                {t('dashboard.lastMonth')}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setDateRange({ from: startOfYear(now), to: endOfYear(now) })}
+              >
+                {t('dashboard.thisYear')}
+              </Button>
+            </div>
 
-                  {filteredAccounts.map((a) => {
-                    const isSelected = selectedAccountIds.includes(a.id)
-                    return (
-                      <CommandItem
-                        key={a.id}
-                        selected={isSelected}
-                        onClick={() =>
-                          setSelectedAccountIds((prev) =>
-                            prev.includes(a.id) ? prev.filter((id) => id !== a.id) : [...prev, a.id]
-                          )
-                        }
-                        className="flex items-center gap-2"
-                      >
-                        <Check className={cn('h-4 w-4', isSelected ? 'opacity-100' : 'opacity-0')} />
-                        <span className="truncate">{a.name}</span>
-                      </CommandItem>
-                    )
-                  })}
-                </CommandGroup>
-              </CommandList>
-            </Command>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">{t('dashboard.dateRangeStart')}</div>
+                <Calendar
+                  selected={dateRange.from}
+                  locale={dateLocale}
+                  onSelect={(d) => {
+                    if (!d) return
+                    setDateRange((prev) => {
+                      const to = prev.to
+                      if (to && d > to) {
+                        return { from: to, to: d }
+                      }
+                      return { from: d, to: to ?? d }
+                    })
+                  }}
+                />
+              </div>
+              <div>
+                <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">{t('dashboard.dateRangeEnd')}</div>
+                <Calendar
+                  selected={dateRange.to}
+                  locale={dateLocale}
+                  onSelect={(d) => {
+                    if (!d) return
+                    setDateRange((prev) => {
+                      const from = prev.from
+                      if (from && d < from) {
+                        return { from: d, to: from }
+                      }
+                      return { from: from ?? d, to: d }
+                    })
+                  }}
+                />
+              </div>
+            </div>
           </PopoverContent>
         </Popover>
       </div>
 
-      <Popover>
-        <PopoverTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            className={cn('h-9 bg-white dark:bg-background justify-start text-left font-normal border-border/50 shadow-sm', !dateRange.from && 'text-muted-foreground')}
-          >
-            <CalendarIcon className="mr-2 h-4 w-4" />
-            {dateRangeLabel}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent align="end" className="w-auto p-3">
-          <div className="flex flex-wrap gap-2 pb-3">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setDateRange({ from: now, to: now })}
-            >
-              {t('dashboard.today')}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() =>
-                setDateRange({
-                  from: startOfWeek(now, { weekStartsOn: 1 }),
-                  to: endOfWeek(now, { weekStartsOn: 1 }),
-                })
-              }
-            >
-              {t('dashboard.thisWeek')}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setDateRange({ from: startOfMonth(now), to: endOfMonth(now) })}
-            >
-              {t('dashboard.thisMonth')}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                const prev = subMonths(now, 1)
-                setDateRange({ from: startOfMonth(prev), to: endOfMonth(prev) })
-              }}
-            >
-              {t('dashboard.lastMonth')}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setDateRange({ from: startOfYear(now), to: endOfYear(now) })}
-            >
-              {t('dashboard.thisYear')}
-            </Button>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">{t('dashboard.dateRangeStart')}</div>
-              <Calendar
-                selected={dateRange.from}
-                locale={dateLocale}
-                onSelect={(d) => {
-                  if (!d) return
-                  setDateRange((prev) => {
-                    const to = prev.to
-                    if (to && d > to) {
-                      return { from: to, to: d }
-                    }
-                    return { from: d, to: to ?? d }
-                  })
-                }}
-              />
-            </div>
-            <div>
-              <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">{t('dashboard.dateRangeEnd')}</div>
-              <Calendar
-                selected={dateRange.to}
-                locale={dateLocale}
-                onSelect={(d) => {
-                  if (!d) return
-                  setDateRange((prev) => {
-                    const from = prev.from
-                    if (from && d < from) {
-                      return { from: d, to: from }
-                    }
-                    return { from: from ?? d, to: d }
-                  })
-                }}
-              />
-            </div>
-          </div>
-        </PopoverContent>
-      </Popover>
-
-      <div className="flex items-center gap-1">
+      <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end">
         <Button
           type="button"
           variant="outline"
@@ -423,7 +425,7 @@ export function DashboardPage() {
           title={t('dashboard.quickInvoice')}
           aria-label={t('dashboard.quickInvoice')}
           onClick={() => navigate('/invoices/new')}
-          className="h-9 w-9"
+          className="h-10 w-10"
         >
           <FileText className="h-4 w-4" />
         </Button>
@@ -434,7 +436,7 @@ export function DashboardPage() {
           title={t('customers.addCustomer')}
           aria-label={t('customers.addCustomer')}
           onClick={() => navigate('/musteriler', { state: { openNew: true } })}
-          className="h-9 w-9"
+          className="h-10 w-10"
         >
           <Users className="h-4 w-4" />
         </Button>
@@ -445,7 +447,7 @@ export function DashboardPage() {
           title={t('dashboard.addOpportunity')}
           aria-label={t('dashboard.addOpportunity')}
           onClick={() => navigate('/firsatlar', { state: { openNew: true } })}
-          className="h-9 w-9"
+          className="h-10 w-10"
         >
           <Briefcase className="h-4 w-4" />
         </Button>
@@ -585,7 +587,7 @@ export function DashboardPage() {
 
         <CardContent>
           <Tabs defaultValue="categories" className="w-full">
-            <TabsList className="w-full sm:w-auto">
+            <TabsList className="flex w-full flex-wrap gap-2 sm:w-auto">
               <TabsTrigger value="categories">{t('dashboard.categoriesTab')}</TabsTrigger>
               <TabsTrigger value="payees">{t('dashboard.counterpartiesTab')}</TabsTrigger>
             </TabsList>
@@ -678,7 +680,7 @@ export function DashboardPage() {
     <AppLayout title={t('dashboard.title')} headerRight={headerRight}>
       <div className="space-y-6">
         {/* KPI Cards */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -749,9 +751,9 @@ export function DashboardPage() {
         </div>
 
         {/* Charts Row */}
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 lg:grid-cols-3">
           {/* Income vs Expense Chart */}
-          <Card className="md:col-span-2">
+          <Card className="lg:col-span-2">
             <CardHeader>
               <CardTitle>{t('dashboard.revenueVsExpense')}</CardTitle>
             </CardHeader>
@@ -808,7 +810,7 @@ export function DashboardPage() {
           </Card>
 
           {/* Sales Pipeline Summary */}
-          <Card>
+          <Card className="h-full">
             <CardHeader>
               <CardTitle>{t('dashboard.salesPipeline')}</CardTitle>
             </CardHeader>
@@ -871,15 +873,15 @@ export function DashboardPage() {
         <div className="grid gap-4 md:grid-cols-2">
           <FinancialBreakdownCard />
 
-          <Tabs defaultValue="transactions">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between gap-3">
+          <Tabs defaultValue="transactions" className="w-full">
+            <Card className="h-full">
+              <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle className="whitespace-nowrap">{t('dashboard.activityCardTitle')}</CardTitle>
-                <TabsList className="h-9">
-                  <TabsTrigger value="transactions" className="h-8">
+                <TabsList className="flex h-9 w-full flex-wrap gap-2 sm:w-auto sm:flex-nowrap">
+                  <TabsTrigger value="transactions" className="h-8 flex-1 sm:flex-none">
                     {t('dashboard.recentTransactionsTab')}
                   </TabsTrigger>
-                  <TabsTrigger value="actions" className="h-8">
+                  <TabsTrigger value="actions" className="h-8 flex-1 sm:flex-none">
                     {t('dashboard.collectionAlertsTab')}
                   </TabsTrigger>
                 </TabsList>

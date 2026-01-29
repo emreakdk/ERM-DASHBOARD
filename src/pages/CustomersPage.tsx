@@ -170,201 +170,205 @@ export function CustomersPage() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'customer' | 'lead')}>
-          <TabsList className="mb-4">
-            <TabsTrigger value="customer">{t('nav.customers')}</TabsTrigger>
-            <TabsTrigger value="lead">{t('customers.leads')}</TabsTrigger>
+          <TabsList className="mb-4 w-full sm:w-auto flex">
+            <TabsTrigger value="customer" className="flex-1 sm:flex-none">{t('nav.customers')}</TabsTrigger>
+            <TabsTrigger value="lead" className="flex-1 sm:flex-none">{t('customers.leads')}</TabsTrigger>
           </TabsList>
 
           <TabsContent value={activeTab}>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-3">
-            <CardTitle className="whitespace-nowrap">{t('customers.customerList')}</CardTitle>
-            <div className="flex flex-1 min-w-0 items-center justify-end gap-2">
-              <div className="relative w-full max-w-sm min-w-0">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={t('customers.searchPlaceholder')}
-                  className="pl-9"
-                />
-              </div>
+            <Card>
+              <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between p-4">
+                <CardTitle className="whitespace-nowrap">{t('customers.customerList')}</CardTitle>
+                
+                {/* Search & Add Button Group */}
+                <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+                  <div className="relative w-full sm:w-[250px]">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder={t('customers.searchPlaceholder')}
+                      className="pl-9 w-full"
+                    />
+                  </div>
 
-              <Dialog
-                open={open}
-                onOpenChange={(v) => {
-                  setOpen(v)
-                  if (!v) setEditingCustomer(null)
-                }}
-              >
-                <DialogTrigger asChild>
-                  <Button
-                    disabled={!canEditCustomers}
-                    onClick={() => {
-                      if (!ensureCanEdit()) return
-                      setEditingCustomer(null)
+                  <Dialog
+                    open={open}
+                    onOpenChange={(v) => {
+                      setOpen(v)
+                      if (!v) setEditingCustomer(null)
                     }}
                   >
-                    <Plus className="mr-2 h-4 w-4" />
-                    {activeTab === 'lead' ? t('customers.addLead') : t('customers.addCustomer')}
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>{editingCustomer ? t('customers.editCustomer') : t('customers.newCustomer')}</DialogTitle>
-                  </DialogHeader>
-                  <CustomerForm
-                    initialCustomer={editingCustomer ?? undefined}
-                    defaultCustomerStatus={activeTab}
-                    onSuccess={() => {
-                      setOpen(false)
-                      toast({
-                        title: editingCustomer ? t('customers.customerUpdated') : (activeTab === 'lead' ? t('customers.leadCreated') : t('customers.customerCreated')),
-                      })
-                      setEditingCustomer(null)
-                    }}
-                  />
-                </DialogContent>
-              </Dialog>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {customersQuery.isLoading ? (
-              <div className="space-y-3">
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
-              </div>
-            ) : customersQuery.isError ? (
-              <p className="text-sm text-destructive">
-                {(customersQuery.error as any)?.message || t('customers.loadFailed')}
-              </p>
-            ) : (
-            <div className="rounded-md border">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
-                      {t('common.name')}
-                    </th>
-                    <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
-                      {t('common.phone')}
-                    </th>
-                    <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
-                      {t('common.email')}
-                    </th>
-                    <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
-                      {t('table.actions')}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredCustomers.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="h-32 text-center">
-                        <p className="text-sm text-muted-foreground">
-                          {t('customers.emptyList')}
-                        </p>
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredCustomers.map((customer) => (
-                      <tr key={customer.id} className="border-b">
-                        <td className="p-4">
-                          <button
-                            type="button"
-                            className="group flex items-center gap-3 p-2 -ml-2 rounded-lg transition-all duration-200 hover:bg-gray-100 dark:hover:bg-white/5 cursor-pointer"
-                            onClick={() => navigate(`/customers/${customer.id}`)}
-                          >
-                            <div
-                              className={
-                                customer.type === 'corporate'
-                                  ? 'h-8 w-8 rounded-full bg-orange-100 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400 flex items-center justify-center'
-                                  : 'h-8 w-8 rounded-full bg-blue-100 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400 flex items-center justify-center'
-                              }
-                            >
-                              {customer.type === 'corporate' ? (
-                                <Building2 className="h-4 w-4" />
-                              ) : (
-                                <User className="h-4 w-4" />
-                              )}
-                            </div>
+                    <DialogTrigger asChild>
+                      <Button
+                        className="w-full sm:w-auto"
+                        disabled={!canEditCustomers}
+                        onClick={() => {
+                          if (!ensureCanEdit()) return
+                          setEditingCustomer(null)
+                        }}
+                      >
+                        <Plus className="mr-2 h-4 w-4" />
+                        {activeTab === 'lead' ? t('customers.addLead') : t('customers.addCustomer')}
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>{editingCustomer ? t('customers.editCustomer') : t('customers.newCustomer')}</DialogTitle>
+                      </DialogHeader>
+                      <CustomerForm
+                        initialCustomer={editingCustomer ?? undefined}
+                        defaultCustomerStatus={activeTab}
+                        onSuccess={() => {
+                          setOpen(false)
+                          toast({
+                            title: editingCustomer ? t('customers.customerUpdated') : (activeTab === 'lead' ? t('customers.leadCreated') : t('customers.customerCreated')),
+                          })
+                          setEditingCustomer(null)
+                        }}
+                      />
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {customersQuery.isLoading ? (
+                  <div className="space-y-3">
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-full" />
+                  </div>
+                ) : customersQuery.isError ? (
+                  <p className="text-sm text-destructive">
+                    {(customersQuery.error as any)?.message || t('customers.loadFailed')}
+                  </p>
+                ) : (
+                  // Table Mobile Fix: overflow-x-auto & min-width
+                  <div className="rounded-md border overflow-x-auto">
+                    <table className="w-full min-w-[800px]">
+                      <thead>
+                        <tr className="border-b bg-muted/50">
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                            {t('common.name')}
+                          </th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                            {t('common.phone')}
+                          </th>
+                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                            {t('common.email')}
+                          </th>
+                          <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
+                            {t('table.actions')}
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredCustomers.length === 0 ? (
+                          <tr>
+                            <td colSpan={4} className="h-32 text-center">
+                              <p className="text-sm text-muted-foreground">
+                                {t('customers.emptyList')}
+                              </p>
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredCustomers.map((customer) => (
+                            <tr key={customer.id} className="border-b">
+                              <td className="p-4">
+                                <button
+                                  type="button"
+                                  className="group flex items-center gap-3 p-2 -ml-2 rounded-lg transition-all duration-200 hover:bg-gray-100 dark:hover:bg-white/5 cursor-pointer"
+                                  onClick={() => navigate(`/customers/${customer.id}`)}
+                                >
+                                  <div
+                                    className={
+                                      customer.type === 'corporate'
+                                        ? 'h-8 w-8 rounded-full bg-orange-100 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400 flex items-center justify-center'
+                                        : 'h-8 w-8 rounded-full bg-blue-100 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400 flex items-center justify-center'
+                                    }
+                                  >
+                                    {customer.type === 'corporate' ? (
+                                      <Building2 className="h-4 w-4" />
+                                    ) : (
+                                      <User className="h-4 w-4" />
+                                    )}
+                                  </div>
 
-                            <div className="flex items-center gap-1 min-w-0">
-                              <span className="font-medium text-gray-900 dark:text-gray-100 text-left truncate">
-                                {customer.name}
-                              </span>
-                              <ChevronRight className="w-4 h-4 text-gray-400 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-200" />
-                            </div>
-                          </button>
-                        </td>
-                        <td className="p-4">{customer.phone || '-'}</td>
-                        <td className="p-4">{customer.email || '-'}</td>
-                        <td className="p-4 text-right">
-                          <div className="flex justify-end gap-2">
-                            {activeTab === 'lead' ? (
-                              <Button
-                                variant="default"
-                                size="sm"
-                                onClick={() => {
-                                  if (!ensureCanEdit()) return
-                                  handleConvertLead(customer)
-                                }}
-                                disabled={!canEditCustomers || convertLead.isPending}
-                              >
-                                <UserCheck className="mr-2 h-4 w-4" />
-                                {t('customers.convertToCustomer')}
-                              </Button>
-                            ) : (
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => {
-                                  if (!ensureCanEdit()) return
-                                  handleConvertToLead(customer)
-                                }}
-                                disabled={!canEditCustomers || convertCustomerToLead.isPending}
-                              >
-                                <RefreshCw className="mr-2 h-4 w-4" />
-                                {t('customers.convertToLead')}
-                              </Button>
-                            )}
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled={!canEditCustomers}
-                              onClick={() => {
-                                if (!ensureCanEdit()) return
-                                setEditingCustomer(customer)
-                                setOpen(true)
-                              }}
-                            >
-                              <Pencil className="mr-2 h-4 w-4" />
-                              {t('common.edit')}
-                            </Button>
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              disabled={!canEditCustomers}
-                              onClick={() => {
-                                if (!ensureCanEdit()) return
-                                setDeletingCustomer(customer)
-                              }}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              {t('common.delete')}
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-            )}
-          </CardContent>
-        </Card>
+                                  <div className="flex items-center gap-1 min-w-0">
+                                    <span className="font-medium text-gray-900 dark:text-gray-100 text-left truncate">
+                                      {customer.name}
+                                    </span>
+                                    <ChevronRight className="w-4 h-4 text-gray-400 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-200" />
+                                  </div>
+                                </button>
+                              </td>
+                              <td className="p-4">{customer.phone || '-'}</td>
+                              <td className="p-4">{customer.email || '-'}</td>
+                              <td className="p-4 text-right">
+                                <div className="flex justify-end gap-2">
+                                  {activeTab === 'lead' ? (
+                                    <Button
+                                      variant="default"
+                                      size="sm"
+                                      onClick={() => {
+                                        if (!ensureCanEdit()) return
+                                        handleConvertLead(customer)
+                                      }}
+                                      disabled={!canEditCustomers || convertLead.isPending}
+                                    >
+                                      <UserCheck className="mr-2 h-4 w-4" />
+                                      {t('customers.convertToCustomer')}
+                                    </Button>
+                                  ) : (
+                                    <Button
+                                      variant="secondary"
+                                      size="sm"
+                                      onClick={() => {
+                                        if (!ensureCanEdit()) return
+                                        handleConvertToLead(customer)
+                                      }}
+                                      disabled={!canEditCustomers || convertCustomerToLead.isPending}
+                                    >
+                                      <RefreshCw className="mr-2 h-4 w-4" />
+                                      {t('customers.convertToLead')}
+                                    </Button>
+                                  )}
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={!canEditCustomers}
+                                    onClick={() => {
+                                      if (!ensureCanEdit()) return
+                                      setEditingCustomer(customer)
+                                      setOpen(true)
+                                    }}
+                                  >
+                                    <Pencil className="mr-2 h-4 w-4" />
+                                    {t('common.edit')}
+                                  </Button>
+                                  <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    disabled={!canEditCustomers}
+                                    onClick={() => {
+                                      if (!ensureCanEdit()) return
+                                      setDeletingCustomer(customer)
+                                    }}
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    {t('common.delete')}
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
 

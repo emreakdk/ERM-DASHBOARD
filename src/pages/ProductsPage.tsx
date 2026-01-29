@@ -106,6 +106,7 @@ export function ProductsPage() {
   return (
     <AppLayout title={t('products.pageTitle')}>
       <div className="space-y-6">
+        {/* Header */}
         <div>
           <div>
             <h2 className="text-2xl font-semibold">{t('products.pageTitle')}</h2>
@@ -113,20 +114,25 @@ export function ProductsPage() {
           </div>
         </div>
 
+        {/* Table Card */}
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-3">
+          <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between p-4">
             <CardTitle className="whitespace-nowrap">{t('products.productList')}</CardTitle>
-            <div className="flex flex-1 min-w-0 items-center justify-end gap-2">
-              <div className="relative w-full max-w-sm min-w-0">
+            
+            {/* Search and Action Button Group */}
+            <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+              {/* Search Bar: Full width on mobile */}
+              <div className="relative w-full sm:w-[250px]">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder={t('products.searchProductsPlaceholder')}
-                  className="pl-9"
+                  className="pl-9 w-full"
                 />
               </div>
 
+              {/* Add Product Dialog */}
               <Dialog
                 open={open}
                 onOpenChange={(v) => {
@@ -136,6 +142,7 @@ export function ProductsPage() {
               >
                 <DialogTrigger asChild>
                   <Button
+                    className="w-full sm:w-auto"
                     disabled={!canEditProducts}
                     onClick={() => {
                       if (!ensureCanEdit()) return
@@ -176,8 +183,9 @@ export function ProductsPage() {
                 {(productsQuery.error as any)?.message || t('products.loadFailed')}
               </p>
             ) : (
-              <div className="rounded-md border">
-                <table className="w-full">
+              // Table Mobile Fix: overflow-x-auto & min-width
+              <div className="rounded-md border overflow-x-auto">
+                <table className="w-full min-w-[800px]">
                   <thead>
                     <tr className="border-b bg-muted/50">
                       <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">{t('common.name')}</th>

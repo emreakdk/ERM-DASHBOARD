@@ -193,117 +193,144 @@ export function FinancePage() {
 
         {/* Table */}
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-3">
-            <CardTitle className="whitespace-nowrap">{t('finance.transactions')}</CardTitle>
-            <div className="flex flex-1 min-w-0 items-center justify-end gap-2">
-              <div className="relative w-full max-w-sm min-w-0">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={t('finance.searchPlaceholder')}
-                  className="pl-9"
-                />
-              </div>
-
+          <CardHeader className="p-4 space-y-4">
+            
+            {/* SATIR 1: Başlık (Sol) ve Tarih Seçici (Sağ) - Tam istediğin gibi karşılıklı */}
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="whitespace-nowrap text-lg">{t('finance.transactions')}</CardTitle>
+              
+              {/* Tarih Seçici */}
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     type="button"
                     variant="outline"
+                    size="sm"
                     className={cn(
-                      'h-9 bg-white dark:bg-background justify-start text-left font-normal border-border/50 shadow-sm',
+                      'h-9 w-[160px] sm:w-auto bg-white dark:bg-background justify-start text-left font-normal border-border/50 shadow-sm',
                       !dateRange?.from && 'text-muted-foreground'
                     )}
                   >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {dateRangeLabel}
+                    <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
+                    <span className="truncate">
+                      {dateRange?.from && dateRange?.to 
+                        ? `${format(dateRange.from, 'd MMM', { locale: dateLocale })} - ${format(dateRange.to, 'd MMM', { locale: dateLocale })}`
+                        : t('finance.dateRange.label')}
+                    </span>
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent align="end" className="w-auto p-3">
-                  <div className="flex flex-wrap gap-2 pb-3">
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setDateRange({ from: now, to: now })}>
-                      {t('finance.dateRange.today')}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        setDateRange({
-                          from: startOfWeek(now, { weekStartsOn: 1 }),
-                          to: endOfWeek(now, { weekStartsOn: 1 }),
-                        })
-                      }
-                    >
-                      {t('finance.dateRange.thisWeek')}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setDateRange({ from: startOfMonth(now), to: endOfMonth(now) })}
-                    >
-                      {t('finance.dateRange.thisMonth')}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        const prev = subMonths(now, 1)
-                        setDateRange({ from: startOfMonth(prev), to: endOfMonth(prev) })
-                      }}
-                    >
-                      {t('finance.dateRange.lastMonth')}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setDateRange({ from: startOfYear(now), to: endOfYear(now) })}
-                    >
-                      {t('finance.dateRange.thisYear')}
-                    </Button>
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setDateRange(undefined)}>
-                      {t('finance.dateRange.clear')}
-                    </Button>
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">{t('finance.dateRange.start')}</div>
-                      <Calendar
-                        selected={dateRange?.from}
-                        locale={dateLocale}
-                        onSelect={(d) => {
-                          if (!d) return
-                          setDateRange((prev) => {
-                            const to = prev?.to
-                            if (to && d > to) return { from: to, to: d }
-                            return { from: d, to: to ?? d }
+                {/* Popover Fix: sideOffset ile biraz mesafe bıraktık, z-index sorunu olmasın diye portal kullanıyor zaten */}
+                <PopoverContent align="end" sideOffset={8} className="w-[95vw] sm:w-auto p-0">
+                  <div className="h-[450px] sm:h-auto overflow-y-auto p-3">
+                    <div className="grid grid-cols-3 gap-2 pb-4 border-b mb-4">
+                      <Button type="button" variant="ghost" size="sm" className="text-xs h-8" onClick={() => setDateRange({ from: now, to: now })}>
+                        {t('finance.dateRange.today')}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-8"
+                        onClick={() =>
+                          setDateRange({
+                            from: startOfWeek(now, { weekStartsOn: 1 }),
+                            to: endOfWeek(now, { weekStartsOn: 1 }),
                           })
+                        }
+                      >
+                        {t('finance.dateRange.thisWeek')}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-8"
+                        onClick={() => setDateRange({ from: startOfMonth(now), to: endOfMonth(now) })}
+                      >
+                        {t('finance.dateRange.thisMonth')}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-8"
+                        onClick={() => {
+                          const prev = subMonths(now, 1)
+                          setDateRange({ from: startOfMonth(prev), to: endOfMonth(prev) })
                         }}
-                      />
+                      >
+                        {t('finance.dateRange.lastMonth')}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-8"
+                        onClick={() => setDateRange({ from: startOfYear(now), to: endOfYear(now) })}
+                      >
+                        {t('finance.dateRange.thisYear')}
+                      </Button>
+                      <Button type="button" variant="ghost" size="sm" className="text-xs h-8" onClick={() => setDateRange(undefined)}>
+                        {t('finance.dateRange.clear')}
+                      </Button>
                     </div>
-                    <div>
-                      <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">{t('finance.dateRange.end')}</div>
-                      <Calendar
-                        selected={dateRange?.to}
-                        locale={dateLocale}
-                        onSelect={(d) => {
-                          if (!d) return
-                          setDateRange((prev) => {
-                            const from = prev?.from
-                            if (from && d < from) return { from: d, to: from }
-                            return { from: from ?? d, to: d }
-                          })
-                        }}
-                      />
+
+                    <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
+                      <div>
+                        <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">{t('finance.dateRange.start')}</div>
+                        <div className="sm:scale-100 scale-95 origin-top-left">
+                          <Calendar
+                            mode="single"
+                            selected={dateRange?.from}
+                            locale={dateLocale}
+                            className="pointer-events-auto border rounded-md"
+                            onSelect={(d) => {
+                              if (!d) return
+                              setDateRange((prev) => {
+                                const to = prev?.to
+                                if (to && d > to) return { from: to, to: d }
+                                return { from: d, to: to ?? d }
+                              })
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">{t('finance.dateRange.end')}</div>
+                        <div className="sm:scale-100 scale-95 origin-top-left">
+                          <Calendar
+                            mode="single"
+                            selected={dateRange?.to}
+                            locale={dateLocale}
+                            className="pointer-events-auto border rounded-md"
+                            onSelect={(d) => {
+                              if (!d) return
+                              setDateRange((prev) => {
+                                const from = prev?.from
+                                if (from && d < from) return { from: d, to: from }
+                                return { from: from ?? d, to: d }
+                              })
+                            }}
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </PopoverContent>
               </Popover>
+            </div>
+
+            {/* SATIR 2: Arama (Sol) ve Yeni İşlem Butonu (Sağ/Alt) */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={t('finance.searchPlaceholder')}
+                  className="pl-9 w-full"
+                />
+              </div>
 
               <Dialog
                 open={open}
@@ -320,6 +347,7 @@ export function FinancePage() {
                 }}
               >
                 <Button
+                  className="w-full sm:w-auto whitespace-nowrap"
                   disabled={!canEditFinance}
                   onClick={() => {
                     if (!ensureCanEdit()) return
@@ -354,6 +382,7 @@ export function FinancePage() {
                 </DialogContent>
               </Dialog>
             </div>
+
           </CardHeader>
           <CardContent>
             {transactionsQuery.isLoading ? (
@@ -367,8 +396,9 @@ export function FinancePage() {
                 {(transactionsQuery.error as any)?.message || t('finance.loadFailed')}
               </p>
             ) : (
-              <div className="rounded-md border">
-                <table className="w-full">
+              // Tablo Mobil Düzeltmesi: overflow-x-auto ve min-width korundu
+              <div className="rounded-md border overflow-x-auto">
+                <table className="w-full min-w-[800px]">
                   <thead>
                     <tr className="border-b bg-muted/50">
                       <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">

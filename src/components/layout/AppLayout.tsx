@@ -8,7 +8,9 @@ import type { ModuleKey } from '../../constants/permissions'
 import { useTheme } from '../theme-provider'
 import { cn } from '../../lib/utils'
 import { Button } from '../ui/button'
-import { Sheet, SheetContent, SheetTrigger } from '../ui/sheet'
+import { Sheet, SheetContent, SheetTrigger,SheetHeader,      // <-- Bunu ekle
+  SheetTitle,       // <-- Bunu ekle
+  SheetDescription } from '../ui/sheet'
 import { LanguageSwitcher } from '../LanguageSwitcher'
 import {
   LayoutDashboard,
@@ -403,23 +405,33 @@ export function AppLayout({ children, title = 'Dashboard', headerRight }: AppLay
       >
         {/* Header */}
         <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-          <div className="flex h-16 items-center justify-between px-4 md:px-8">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-3 px-4 py-3 md:h-16 md:flex-nowrap md:justify-between md:px-8">
+            <div className="flex flex-1 min-w-0 items-center gap-2">
               {/* Mobile hamburger */}
-              <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-                <SheetTrigger asChild>
-                  <Button variant="ghost" size="icon" className="md:hidden">
-                    <Menu className="h-5 w-5" />
-                    <span className="sr-only">{t('common.menu')}</span>
-                  </Button>
-                </SheetTrigger>
-                <SheetContent>
-                  <SidebarContent
-                    collapsed={false}
-                    onNavigate={() => setMobileOpen(false)}
-                  />
-                </SheetContent>
-              </Sheet>
+   <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+  <SheetTrigger asChild>
+    <Button variant="ghost" size="icon" className="md:hidden">
+      <Menu className="h-5 w-5" />
+      <span className="sr-only">{t('common.menu')}</span>
+    </Button>
+  </SheetTrigger>
+
+  {/* side="left": Soldan açılması için */}
+  {/* p-0: Kenar boşluklarını sıfırlamak için */}
+  <SheetContent side="left" className="p-0 w-[280px] bg-background">
+    
+    {/* BU KISIM HATAYI ÇÖZER (Ekranda görünmez ama hatayı siler) */}
+    <SheetHeader className="sr-only">
+      <SheetTitle>Mobil Menü</SheetTitle>
+      <SheetDescription>Navigasyon menüsü</SheetDescription>
+    </SheetHeader>
+
+    <SidebarContent
+      collapsed={false}
+      onNavigate={() => setMobileOpen(false)}
+    />
+  </SheetContent>
+</Sheet>
 
               {/* Desktop collapse */}
               <Button
@@ -440,12 +452,14 @@ export function AppLayout({ children, title = 'Dashboard', headerRight }: AppLay
               <h2 className="text-xl font-semibold md:text-2xl">{title}</h2>
             </div>
 
-            <div className="flex items-center gap-3">
-              {showCompanySwitcher && (
-                <div className="hidden md:block">{renderCompanySelect()}</div>
-              )}
-              <LanguageSwitcher />
-              {headerRight}
+            <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center md:justify-end">
+              <div className="flex items-center justify-end gap-3">
+                {showCompanySwitcher && (
+                  <div className="hidden md:block">{renderCompanySelect()}</div>
+                )}
+                <LanguageSwitcher />
+              </div>
+              {headerRight ? <div className="w-full md:w-auto">{headerRight}</div> : null}
             </div>
           </div>
         </header>

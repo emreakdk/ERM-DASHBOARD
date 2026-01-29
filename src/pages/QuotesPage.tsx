@@ -184,125 +184,148 @@ export function QuotesPage() {
   return (
     <AppLayout title={t('nav.quotes')}>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-semibold">{t('quotes.pageTitle')}</h2>
-            <p className="text-sm text-muted-foreground mt-1">{t('quotes.pageDescription')}</p>
-          </div>
+        {/* Header Title */}
+        <div>
+          <h2 className="text-2xl font-semibold">{t('quotes.pageTitle')}</h2>
+          <p className="text-sm text-muted-foreground mt-1">{t('quotes.pageDescription')}</p>
         </div>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-3">
-            <CardTitle className="whitespace-nowrap">{t('quotes.quoteList')}</CardTitle>
-            <div className="flex flex-1 min-w-0 items-center justify-end gap-2">
-              <div className="relative w-full max-w-sm min-w-0">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={t('quotes.searchPlaceholder')}
-                  className="pl-9"
-                />
-              </div>
-
+          <CardHeader className="p-4 space-y-4">
+            
+            {/* SATIR 1: Başlık (Sol) ve Tarih Seçici (Sağ) */}
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="whitespace-nowrap text-lg">{t('quotes.quoteList')}</CardTitle>
+              
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     type="button"
                     variant="outline"
+                    size="sm"
                     className={cn(
-                      'h-9 bg-white dark:bg-background justify-start text-left font-normal border-border/50 shadow-sm',
+                      'h-9 w-[160px] sm:w-auto bg-white dark:bg-background justify-start text-left font-normal border-border/50 shadow-sm',
                       !dateRange?.from && 'text-muted-foreground'
                     )}
                   >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {dateRangeLabel}
+                    <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
+                    <span className="truncate">
+                      {dateRange?.from && dateRange?.to 
+                        ? `${format(dateRange.from, 'd MMM', { locale: tr })} - ${format(dateRange.to, 'd MMM', { locale: tr })}`
+                        : t('dashboard.dateRange')}
+                    </span>
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent align="end" className="w-auto p-3">
-                  <div className="flex flex-wrap gap-2 pb-3">
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setDateRange({ from: now, to: now })}>
-                      {t('common.today')}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        setDateRange({
-                          from: startOfWeek(now, { weekStartsOn: 1 }),
-                          to: endOfWeek(now, { weekStartsOn: 1 }),
-                        })
-                      }
-                    >
-                      {t('quotes.thisWeek')}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setDateRange({ from: startOfMonth(now), to: endOfMonth(now) })}
-                    >
-                      {t('quotes.thisMonth')}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        const prev = subMonths(now, 1)
-                        setDateRange({ from: startOfMonth(prev), to: endOfMonth(prev) })
-                      }}
-                    >
-                      {t('quotes.lastMonth')}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setDateRange({ from: startOfYear(now), to: endOfYear(now) })}
-                    >
-                      {t('quotes.thisYear')}
-                    </Button>
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setDateRange(undefined)}>
-                      {t('quotes.clear')}
-                    </Button>
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">{t('quotes.start')}</div>
-                      <Calendar
-                        selected={dateRange?.from}
-                        locale={tr}
-                        onSelect={(d) => {
-                          if (!d) return
-                          setDateRange((prev) => {
-                            const to = prev?.to
-                            if (to && d > to) return { from: to, to: d }
-                            return { from: d, to: to ?? d }
+                {/* Mobile Friendly Popover Content */}
+                <PopoverContent align="end" sideOffset={8} className="w-[95vw] sm:w-auto p-0">
+                  <div className="h-[450px] sm:h-auto overflow-y-auto p-3">
+                    <div className="grid grid-cols-3 gap-2 pb-4 border-b mb-4">
+                      <Button type="button" variant="ghost" size="sm" className="text-xs h-8" onClick={() => setDateRange({ from: now, to: now })}>
+                        {t('common.today')}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-8"
+                        onClick={() =>
+                          setDateRange({
+                            from: startOfWeek(now, { weekStartsOn: 1 }),
+                            to: endOfWeek(now, { weekStartsOn: 1 }),
                           })
+                        }
+                      >
+                        {t('quotes.thisWeek')}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-8"
+                        onClick={() => setDateRange({ from: startOfMonth(now), to: endOfMonth(now) })}
+                      >
+                        {t('quotes.thisMonth')}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-8"
+                        onClick={() => {
+                          const prev = subMonths(now, 1)
+                          setDateRange({ from: startOfMonth(prev), to: endOfMonth(prev) })
                         }}
-                      />
+                      >
+                        {t('quotes.lastMonth')}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-8"
+                        onClick={() => setDateRange({ from: startOfYear(now), to: endOfYear(now) })}
+                      >
+                        {t('quotes.thisYear')}
+                      </Button>
+                      <Button type="button" variant="ghost" size="sm" className="text-xs h-8" onClick={() => setDateRange(undefined)}>
+                        {t('quotes.clear')}
+                      </Button>
                     </div>
-                    <div>
-                      <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">{t('quotes.end')}</div>
-                      <Calendar
-                        selected={dateRange?.to}
-                        locale={tr}
-                        onSelect={(d) => {
-                          if (!d) return
-                          setDateRange((prev) => {
-                            const from = prev?.from
-                            if (from && d < from) return { from: d, to: from }
-                            return { from: from ?? d, to: d }
-                          })
-                        }}
-                      />
+
+                    <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
+                      <div>
+                        <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">{t('quotes.start')}</div>
+                        <div className="sm:scale-100 scale-95 origin-top-left">
+                          <Calendar
+                            selected={dateRange?.from}
+                            locale={tr}
+                            className="pointer-events-auto border rounded-md"
+                            onSelect={(d) => {
+                              if (!d) return
+                              setDateRange((prev) => {
+                                const to = prev?.to
+                                if (to && d > to) return { from: to, to: d }
+                                return { from: d, to: to ?? d }
+                              })
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">{t('quotes.end')}</div>
+                        <div className="sm:scale-100 scale-95 origin-top-left">
+                          <Calendar
+                            selected={dateRange?.to}
+                            locale={tr}
+                            className="pointer-events-auto border rounded-md"
+                            onSelect={(d) => {
+                              if (!d) return
+                              setDateRange((prev) => {
+                                const from = prev?.from
+                                if (from && d < from) return { from: d, to: from }
+                                return { from: from ?? d, to: d }
+                              })
+                            }}
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </PopoverContent>
               </Popover>
+            </div>
+
+            {/* SATIR 2: Arama (Sol) ve Yeni Teklif Butonu (Sağ) */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={t('quotes.searchPlaceholder')}
+                  className="pl-9 w-full"
+                />
+              </div>
 
               <Sheet
                 open={open}
@@ -313,6 +336,7 @@ export function QuotesPage() {
               >
                 <SheetTrigger asChild>
                   <Button
+                    className="w-full sm:w-auto whitespace-nowrap"
                     disabled={!canEditQuotes}
                     onClick={() => {
                       if (!ensureCanEdit()) return
@@ -416,6 +440,7 @@ export function QuotesPage() {
               </Sheet>
             </div>
           </CardHeader>
+
           <CardContent>
             {quotesQuery.isLoading ? (
               <div className="space-y-3">
@@ -428,8 +453,9 @@ export function QuotesPage() {
                 {(quotesQuery.error as any)?.message || t('quotes.loadFailed')}
               </p>
             ) : (
-              <div className="rounded-md border">
-                <table className="w-full">
+              // Table Mobile Fix: overflow-x-auto & min-width
+              <div className="rounded-md border overflow-x-auto">
+                <table className="w-full min-w-[800px]">
                   <thead>
                     <tr className="border-b bg-muted/50">
                       <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">{t('quotes.quoteNumber')}</th>

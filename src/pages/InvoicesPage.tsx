@@ -322,153 +322,154 @@ export function InvoicesPage() {
     <AppLayout title={t('nav.invoices')}>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-semibold">{t('nav.invoices')}</h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              {t('invoices.manageInvoices')}
-            </p>
-          </div>
+        <div>
+          <h2 className="text-2xl font-semibold">{t('nav.invoices')}</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            {t('invoices.manageInvoices')}
+          </p>
         </div>
 
-        {/* Table */}
+        {/* Table Card */}
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-3">
-            <CardTitle className="whitespace-nowrap">{t('invoices.invoiceList')}</CardTitle>
-            <div className="flex flex-1 min-w-0 items-center justify-end gap-2">
-              <div className="relative w-full max-w-sm min-w-0">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={t('invoices.searchPlaceholder')}
-                  className="pl-9"
-                />
-              </div>
-
+          <CardHeader className="p-4 space-y-4">
+            
+            {/* SATIR 1: Başlık (Sol) ve Tarih Seçici (Sağ) */}
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="whitespace-nowrap text-lg">{t('invoices.invoiceList')}</CardTitle>
+              
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     type="button"
                     variant="outline"
+                    size="sm"
                     className={cn(
-                      'h-9 bg-white dark:bg-background justify-start text-left font-normal border-border/50 shadow-sm',
+                      'h-9 w-[160px] sm:w-auto bg-white dark:bg-background justify-start text-left font-normal border-border/50 shadow-sm',
                       !dateRange?.from && 'text-muted-foreground'
                     )}
                   >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {dateRangeLabel}
+                    <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
+                    <span className="truncate">
+                      {dateRange?.from && dateRange?.to 
+                        ? `${format(dateRange.from, 'd MMM', { locale: dateLocale })} - ${format(dateRange.to, 'd MMM', { locale: dateLocale })}`
+                        : t('dashboard.dateRange')}
+                    </span>
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent align="end" className="w-auto p-3">
-                  <div className="flex flex-wrap gap-2 pb-3">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setDateRange({ from: now, to: now })}
-                    >
-                      {t('invoices.dateFilter.today')}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        setDateRange({
-                          from: startOfWeek(now, { weekStartsOn: 1 }),
-                          to: endOfWeek(now, { weekStartsOn: 1 }),
-                        })
-                      }
-                    >
-                      {t('invoices.dateFilter.thisWeek')}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setDateRange({ from: startOfMonth(now), to: endOfMonth(now) })}
-                    >
-                      {t('invoices.dateFilter.thisMonth')}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        const prev = subMonths(now, 1)
-                        setDateRange({ from: startOfMonth(prev), to: endOfMonth(prev) })
-                      }}
-                    >
-                      {t('invoices.dateFilter.lastMonth')}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setDateRange({ from: startOfYear(now), to: endOfYear(now) })}
-                    >
-                      {t('invoices.dateFilter.thisYear')}
-                    </Button>
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setDateRange(undefined)}>
-                      {t('invoices.dateFilter.clear')}
-                    </Button>
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">
-                        {t('invoices.dateFilter.start')}
-                      </div>
-                      <Calendar
-                        selected={dateRange?.from}
-                        locale={dateLocale}
-                        onSelect={(d) => {
-                          if (!d) return
-                          setDateRange((prev) => {
-                            const to = prev?.to
-                            if (to && d > to) {
-                              return { from: to, to: d }
-                            }
-                            return { from: d, to: to ?? d }
+                {/* Mobile Friendly Popover Content */}
+                <PopoverContent align="end" sideOffset={8} className="w-[95vw] sm:w-auto p-0">
+                  <div className="h-[450px] sm:h-auto overflow-y-auto p-3">
+                    <div className="grid grid-cols-3 gap-2 pb-4 border-b mb-4">
+                      <Button type="button" variant="ghost" size="sm" className="text-xs h-8" onClick={() => setDateRange({ from: now, to: now })}>
+                        {t('invoices.dateFilter.today')}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-8"
+                        onClick={() =>
+                          setDateRange({
+                            from: startOfWeek(now, { weekStartsOn: 1 }),
+                            to: endOfWeek(now, { weekStartsOn: 1 }),
                           })
+                        }
+                      >
+                        {t('invoices.dateFilter.thisWeek')}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-8"
+                        onClick={() => setDateRange({ from: startOfMonth(now), to: endOfMonth(now) })}
+                      >
+                        {t('invoices.dateFilter.thisMonth')}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-8"
+                        onClick={() => {
+                          const prev = subMonths(now, 1)
+                          setDateRange({ from: startOfMonth(prev), to: endOfMonth(prev) })
                         }}
-                      />
+                      >
+                        {t('invoices.dateFilter.lastMonth')}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-8"
+                        onClick={() => setDateRange({ from: startOfYear(now), to: endOfYear(now) })}
+                      >
+                        {t('invoices.dateFilter.thisYear')}
+                      </Button>
+                      <Button type="button" variant="ghost" size="sm" className="text-xs h-8" onClick={() => setDateRange(undefined)}>
+                        {t('invoices.dateFilter.clear')}
+                      </Button>
                     </div>
-                    <div>
-                      <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">
-                        {t('invoices.dateFilter.end')}
+
+                    <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
+                      <div>
+                        <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">
+                          {t('invoices.dateFilter.start')}
+                        </div>
+                        <div className="sm:scale-100 scale-95 origin-top-left">
+                          <Calendar
+                            selected={dateRange?.from}
+                            locale={dateLocale}
+                            className="pointer-events-auto border rounded-md"
+                            onSelect={(d) => {
+                              if (!d) return
+                              setDateRange((prev) => {
+                                const to = prev?.to
+                                if (to && d > to) return { from: to, to: d }
+                                return { from: d, to: to ?? d }
+                              })
+                            }}
+                          />
+                        </div>
                       </div>
-                      <Calendar
-                        selected={dateRange?.to}
-                        locale={dateLocale}
-                        onSelect={(d) => {
-                          if (!d) return
-                          setDateRange((prev) => {
-                            const from = prev?.from
-                            if (from && d < from) {
-                              return { from: d, to: from }
-                            }
-                            return { from: from ?? d, to: d }
-                          })
-                        }}
-                      />
+                      <div>
+                        <div className="px-1 pb-2 text-xs font-medium text-muted-foreground">
+                          {t('invoices.dateFilter.end')}
+                        </div>
+                        <div className="sm:scale-100 scale-95 origin-top-left">
+                          <Calendar
+                            selected={dateRange?.to}
+                            locale={dateLocale}
+                            className="pointer-events-auto border rounded-md"
+                            onSelect={(d) => {
+                              if (!d) return
+                              setDateRange((prev) => {
+                                const from = prev?.from
+                                if (from && d < from) return { from: d, to: from }
+                                return { from: from ?? d, to: d }
+                              })
+                            }}
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </PopoverContent>
               </Popover>
+            </div>
 
-              <Button
-                onClick={() => {
-                  if (!ensureCanEdit()) return
-                  setEditingInvoice(null)
-                  setOpen(true)
-                }}
-                disabled={!canEditInvoices}
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                {t('invoices.newInvoice')}
-              </Button>
+            {/* SATIR 2: Arama (Sol) ve Yeni Fatura Butonu (Sağ) */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={t('invoices.searchPlaceholder')}
+                  className="pl-9 w-full"
+                />
+              </div>
 
               <Sheet
                 open={open}
@@ -544,8 +545,8 @@ export function InvoicesPage() {
                         ) : (paymentsQuery.data ?? []).length === 0 ? (
                           <div className="mt-4 text-sm text-muted-foreground">{t('invoices.payments.empty')}</div>
                         ) : (
-                          <div className="mt-4 overflow-hidden rounded-md border">
-                            <table className="w-full">
+                          <div className="mt-4 overflow-hidden rounded-md border overflow-x-auto">
+                            <table className="w-full min-w-[400px]">
                               <thead>
                                 <tr className="border-b bg-muted/50">
                                   <th className="h-10 px-3 text-left align-middle text-xs font-medium text-muted-foreground">
@@ -597,6 +598,20 @@ export function InvoicesPage() {
                     </div>
                   ) : null}
                 </SheetContent>
+                
+                {/* Trigger Button - Moved here to ensure correct scope */}
+                <Button
+                  className="w-full sm:w-auto whitespace-nowrap"
+                  onClick={() => {
+                    if (!ensureCanEdit()) return
+                    setEditingInvoice(null)
+                    setOpen(true)
+                  }}
+                  disabled={!canEditInvoices}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  {t('invoices.newInvoice')}
+                </Button>
               </Sheet>
             </div>
           </CardHeader>
@@ -612,11 +627,11 @@ export function InvoicesPage() {
                 })
               }}
             >
-              <TabsList className="mb-4">
-                <TabsTrigger value="unpaid">
+              <TabsList className="mb-4 w-full sm:w-auto flex">
+                <TabsTrigger value="unpaid" className="flex-1 sm:flex-none">
                   {t('invoices.unpaid')} ({unpaidInvoices.length})
                 </TabsTrigger>
-                <TabsTrigger value="paid">
+                <TabsTrigger value="paid" className="flex-1 sm:flex-none">
                   {t('invoices.paid')} ({paidInvoices.length})
                 </TabsTrigger>
               </TabsList>
@@ -633,8 +648,9 @@ export function InvoicesPage() {
                     {(invoicesQuery.error as any)?.message || t('invoices.loadFailed')}
                   </p>
                 ) : (
-                  <div className="rounded-md border">
-                    <table className="w-full">
+                  // Table Mobile Fix: overflow-x-auto & min-width
+                  <div className="rounded-md border overflow-x-auto">
+                    <table className="w-full min-w-[1000px]">
                       <thead>
                         <tr className="border-b bg-muted/50">
                           <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
@@ -854,8 +870,9 @@ export function InvoicesPage() {
                     {(invoicesQuery.error as any)?.message || t('invoices.loadFailed')}
                   </p>
                 ) : (
-                  <div className="rounded-md border">
-                    <table className="w-full">
+                  // Table Mobile Fix: overflow-x-auto & min-width
+                  <div className="rounded-md border overflow-x-auto">
+                    <table className="w-full min-w-[1000px]">
                       <thead>
                         <tr className="border-b bg-muted/50">
                           <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
@@ -936,6 +953,61 @@ export function InvoicesPage() {
                                     >
                                       <Printer className="h-4 w-4" />
                                     </Button>
+
+                                    <DropdownMenu.Root>
+                                      <DropdownMenu.Trigger asChild>
+                                        <Button
+                                          variant="outline"
+                                          size="icon"
+                                          title={inv.token ? t('invoices.actions.share') : t('invoices.shareTokenMissing')}
+                                          disabled={!inv.token}
+                                        >
+                                          <Share2 className="h-4 w-4" />
+                                        </Button>
+                                      </DropdownMenu.Trigger>
+                                      <DropdownMenu.Portal>
+                                        <DropdownMenu.Content
+                                          align="end"
+                                          sideOffset={6}
+                                          className="z-50 min-w-[220px] rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+                                        >
+                                          <DropdownMenu.Item
+                                            className="relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-accent focus:text-accent-foreground"
+                                            onSelect={async () => {
+                                              try {
+                                                const token = inv.token
+                                                if (!token) return
+                                                const fullUrl = `${window.location.origin}/p/invoice/${token}`
+                                                await navigator.clipboard.writeText(fullUrl)
+                                                toast({ title: t('invoices.share.copySuccess') })
+                                              } catch (e: any) {
+                                                toast({
+                                                  title: t('invoices.share.copyFailed'),
+                                                  description: e?.message || t('common.errorOccurred'),
+                                                  variant: 'destructive',
+                                                })
+                                              }
+                                            }}
+                                          >
+                                            <Copy className="h-4 w-4" />
+                                            {t('invoices.share.copyLink')}
+                                          </DropdownMenu.Item>
+
+                                          <DropdownMenu.Item
+                                            className="relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-accent focus:text-accent-foreground"
+                                            onSelect={() => {
+                                              const token = inv.token
+                                              if (!token) return
+                                              const fullUrl = `${window.location.origin}/p/invoice/${token}`
+                                              window.open(fullUrl, '_blank', 'noopener,noreferrer')
+                                            }}
+                                          >
+                                            <ExternalLink className="h-4 w-4" />
+                                            {t('invoices.share.preview')}
+                                          </DropdownMenu.Item>
+                                        </DropdownMenu.Content>
+                                      </DropdownMenu.Portal>
+                                    </DropdownMenu.Root>
 
                                     <Button
                                       variant="ghost"
@@ -1173,8 +1245,8 @@ export function InvoicesPage() {
               ) : (quickPaymentsQuery.data ?? []).length === 0 ? (
                 <div className="mt-3 text-sm text-muted-foreground">{t('invoices.quickPayment.historyEmpty')}</div>
               ) : (
-                <div className="mt-3 overflow-hidden rounded-md border">
-                  <table className="w-full">
+                <div className="mt-3 overflow-hidden rounded-md border overflow-x-auto">
+                  <table className="w-full min-w-[400px]">
                     <thead>
                       <tr className="border-b bg-muted/50">
                         <th className="h-9 px-3 text-left align-middle text-xs font-medium text-muted-foreground">
